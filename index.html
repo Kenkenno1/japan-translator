@@ -145,7 +145,7 @@
       align-items:center;
       justify-content:center;
       gap:8px;
-      width:100%;
+      flex:1;
       padding:16px;
       border:1px solid rgba(255,255,255,0.18);
       border-radius:var(--radius);
@@ -226,13 +226,18 @@
         0 2px 8px rgba(0,0,0,0.06);
     }
 
-    /* ===== Translate button (big, prominent) ===== */
+    /* ===== Bottom action row (translate + speak) ===== */
+    .action-row{
+      display:flex;
+      gap:10px;
+      flex-shrink:0;
+    }
     .btn-translate{
       display:flex;
       align-items:center;
       justify-content:center;
       gap:8px;
-      width:100%;
+      flex:1;
       padding:16px;
       border:none;
       border-radius:var(--radius);
@@ -243,33 +248,45 @@
       font-family:inherit;
       cursor:pointer;
       transition:opacity 150ms, transform 80ms;
-      flex-shrink:0;
       -webkit-user-select:none;
       user-select:none;
     }
     .btn-translate:active{transform:scale(0.98)}
     .btn-translate:disabled{opacity:0.4;cursor:not-allowed;transform:none}
 
-    /* ===== Swap direction button ===== */
-    .btn-swap{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      width:100%;
-      padding:6px;
-      border:1px solid var(--border);
-      border-radius:12px;
-      background:var(--panel);
+    /* Speak/Mute toggle button — muted state */
+    .btn-speak-out.muted{
       color:var(--muted);
-      font-size:13px;
-      font-family:inherit;
-      cursor:pointer;
-      flex-shrink:0;
-      transition:background 100ms;
-      -webkit-user-select:none;
-      user-select:none;
+      border-color:rgba(128,128,128,0.2);
+      background:linear-gradient(
+        135deg,
+        rgba(128,128,128,0.10) 0%,
+        rgba(128,128,128,0.04) 40%,
+        rgba(128,128,128,0.02) 60%,
+        rgba(128,128,128,0.07) 100%
+      );
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 -1px 0 rgba(0,0,0,0.06),
+        0 2px 6px rgba(0,0,0,0.10);
+      animation:none;
     }
-    .btn-swap:active{background:rgba(128,128,128,0.12)}
+    .btn-speak-out.muted::before{display:none}
+    [data-theme="light"] .btn-speak-out.muted{
+      color:var(--muted);
+      border-color:rgba(0,0,0,0.06);
+      background:linear-gradient(135deg, rgba(200,200,200,0.3) 0%, rgba(200,200,200,0.15) 50%, rgba(200,200,200,0.25) 100%);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),0 2px 6px rgba(0,0,0,0.04);
+    }
+
+    /* ===== Divider between panels ===== */
+    .panel-divider{
+      width:100%;
+      height:1px;
+      background:var(--border);
+      flex-shrink:0;
+      margin:2px 0;
+    }
 
     /* ===== Panel ===== */
     .panel{
@@ -729,10 +746,8 @@
       <textarea id="src" placeholder="輸入中文或日文…"></textarea>
     </section>
 
-    <!-- Swap + Translate row -->
-    <button class="btn-swap" id="btnSwap" aria-label="交換語言方向" title="交換語言方向">
-      <span id="swapLabel">中文 → 日本語</span>&nbsp;&nbsp;⇅
-    </button>
+    <!-- Divider between panels -->
+    <div class="panel-divider"></div>
 
     <!-- Output panel -->
     <section class="panel" id="outPanel">
@@ -749,15 +764,11 @@
       <div class="output-text" id="out" contenteditable="true" role="textbox" aria-label="翻譯結果" data-placeholder="翻譯結果會顯示在這裡…"></div>
     </section>
 
-    <!-- Big glass speak button for output -->
-    <button class="btn-speak-out" id="btnSpeakOut" aria-label="朗讀">
-      🔊 朗讀
-    </button>
-
-    <!-- Translate button -->
-    <button class="btn-translate" id="btnTranslate" aria-label="翻譯">
-      翻譯
-    </button>
+    <!-- Action row: Translate + Speak/Mute -->
+    <div class="action-row">
+      <button class="btn-translate" id="btnTranslate" aria-label="翻譯">翻譯</button>
+      <button class="btn-speak-out" id="btnSpeakOut" aria-label="朗讀">🔊 朗讀</button>
+    </div>
   </div>
 
   <!-- TTS stop FAB -->
@@ -792,6 +803,7 @@
       SRC_TEXT: 'jptw_src_text',
       DIRECTION: 'jptw_direction',
       LAST_MODEL: 'jptw_last_model',
+      MUTE: 'jptw_mute',
     };
 
     const MODEL_FALLBACK_CHAIN = ['gpt-5.3-instant','gpt-5.4','gpt-5.2','gpt-5.1','gpt-4o'];
@@ -818,6 +830,7 @@
       ttsApiKey: (localStorage.getItem(STORAGE_KEYS.TTS_KEY) || '').trim(),
       model: localStorage.getItem(STORAGE_KEYS.MODEL) || 'gpt-5.3-instant',
       auto: (localStorage.getItem(STORAGE_KEYS.AUTO) ?? '1') === '1',
+      mute: localStorage.getItem(STORAGE_KEYS.MUTE) === '1',
       theme: localStorage.getItem(STORAGE_KEYS.THEME) || 'dark',
       // direction: 'zh2ja' or 'ja2zh'
       direction: localStorage.getItem(STORAGE_KEYS.DIRECTION) || 'zh2ja',
@@ -871,8 +884,6 @@
       btnCopySrc: $('btnCopySrc'),
       btnCopyOut: $('btnCopyOut'),
       btnClear: $('btnClear'),
-      btnSwap: $('btnSwap'),
-      swapLabel: $('swapLabel'),
       btnSpeakSrc: $('btnSpeakSrc'),
       btnSpeakOut: $('btnSpeakOut'),
       stopFab: $('stopFab'),
@@ -954,7 +965,6 @@
       const tgt = LANG[getTgtLang()].display;
       el.srcChip.textContent = src;
       el.outChip.textContent = tgt;
-      el.swapLabel.textContent = `${src} → ${tgt}`;
       el.src.placeholder = `輸入${src}…`;
     }
 
@@ -1079,27 +1089,39 @@
     });
 
     // --- Swap direction ---
-    el.btnSwap.addEventListener('click', () => {
-      stopMic();
-      state.direction = state.direction === 'zh2ja' ? 'ja2zh' : 'zh2ja';
-      localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
-      updateDirectionUI();
-
-      // Swap content if output has text
-      const outText = el.out.textContent.trim();
-      if (outText) {
-        el.src.value = outText;
-        el.out.textContent = '';
-        el.srcCount.textContent = String(outText.length);
-        el.outCount.textContent = '';
-        persistSrcText();
-        setBusy(false);
-      }
-    });
-
     // --- TTS ---
     el.btnSpeakSrc.addEventListener('click', () => toggleSpeak('src'));
-    el.btnSpeakOut.addEventListener('click', () => toggleSpeak('out'));
+
+    // Speak/Mute toggle: tap to toggle auto-speak; when not muted and output exists, also speak now
+    function updateMuteUI() {
+      if (state.mute) {
+        el.btnSpeakOut.classList.add('muted');
+        el.btnSpeakOut.innerHTML = '🔇 靜音中';
+      } else {
+        el.btnSpeakOut.classList.remove('muted');
+        el.btnSpeakOut.innerHTML = '🔊 朗讀';
+      }
+    }
+    updateMuteUI();
+
+    el.btnSpeakOut.addEventListener('click', () => {
+      if (state.speaking) {
+        // If currently speaking, stop it
+        stopSpeaking();
+        return;
+      }
+      state.mute = !state.mute;
+      localStorage.setItem(STORAGE_KEYS.MUTE, state.mute ? '1' : '0');
+      updateMuteUI();
+      if (!state.mute && el.out.textContent.trim()) {
+        // Unmuted and there's output — speak it now
+        toggleSpeak('out');
+      } else if (state.mute) {
+        toast('自動朗讀已關閉');
+      } else {
+        toast('自動朗讀已開啟');
+      }
+    });
     el.stopFab.addEventListener('click', stopSpeaking);
 
     function toggleSpeak(target) {
@@ -1681,8 +1703,8 @@ Return ONLY the improved translation. No explanations, no notes.`;
           el.outStatus.textContent = '';
         }
 
-        // Auto-speak output after translation + refine complete
-        if (!controller.signal.aborted && el.out.textContent.trim()) {
+        // Auto-speak output after translation + refine complete (unless muted)
+        if (!state.mute && !controller.signal.aborted && el.out.textContent.trim()) {
           toggleSpeak('out');
         }
 
