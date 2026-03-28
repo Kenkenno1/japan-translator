@@ -36,7 +36,7 @@
       --toastBd:rgba(255,255,255,0.12);
       --bodyBg:var(--bg);
       --skelBar:rgba(255,255,255,0.06);
-      --outColor:rgba(134,239,172,0.95);
+      --outColor:rgba(130,177,255,0.95);
       --accent:#6ee7b7;
       --accentBg:rgba(110,231,183,0.10);
       --accentBd:rgba(110,231,183,0.30);
@@ -65,7 +65,7 @@
       --toastBd:rgba(0,0,0,0.10);
       --bodyBg:var(--bg);
       --skelBar:rgba(0,0,0,0.07);
-      --outColor:rgba(16,120,56,0.95);
+      --outColor:rgba(37,99,235,0.95);
       --accent:#059669;
       --accentBg:rgba(5,150,105,0.08);
       --accentBd:rgba(5,150,105,0.25);
@@ -144,12 +144,12 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      gap:6px;
+      gap:8px;
       width:100%;
-      padding:14px;
+      padding:16px;
       border:1px solid rgba(255,255,255,0.18);
       border-radius:var(--radius);
-      font-size:16px;
+      font-size:20px;
       font-weight:600;
       font-family:inherit;
       cursor:pointer;
@@ -231,14 +231,14 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      gap:6px;
+      gap:8px;
       width:100%;
-      padding:14px;
+      padding:16px;
       border:none;
       border-radius:var(--radius);
       background:var(--accent);
       color:#000;
-      font-size:16px;
+      font-size:20px;
       font-weight:600;
       font-family:inherit;
       cursor:pointer;
@@ -318,6 +318,7 @@
       resize:none;
       outline:none;
       font-size:24px;
+      font-weight:600;
       line-height:1.75;
       letter-spacing:0.02em;
       flex:1;
@@ -334,6 +335,7 @@
       color:var(--outColor);
       padding:6px 14px 14px;
       font-size:24px;
+      font-weight:600;
       line-height:1.75;
       letter-spacing:0.02em;
       flex:1;
@@ -728,8 +730,8 @@
     </section>
 
     <!-- Big glass speak button for output -->
-    <button class="btn-speak-out" id="btnSpeakOut" aria-label="朗讀翻譯">
-      🔊 朗讀翻譯
+    <button class="btn-speak-out" id="btnSpeakOut" aria-label="朗讀">
+      🔊 朗讀
     </button>
 
     <!-- Translate button -->
@@ -1107,7 +1109,7 @@
 
       const onDone = () => {
         if (state.ttsTimeout) { clearTimeout(state.ttsTimeout); state.ttsTimeout = null; }
-        btn.textContent = target === 'src' ? '🔊' : '🔊 朗讀翻譯';
+        btn.textContent = target === 'src' ? '🔊' : '🔊 朗讀';
         btn.classList.remove('speaking');
         panel.classList.remove('speaking-glow');
         state.speaking = false;
@@ -1190,7 +1192,7 @@
       if (state.speakingTarget) {
         const btn = state.speakingTarget === 'src' ? el.btnSpeakSrc : el.btnSpeakOut;
         const panel = state.speakingTarget === 'src' ? el.srcPanel : el.outPanel;
-        btn.textContent = state.speakingTarget === 'src' ? '🔊' : '🔊 朗讀翻譯';
+        btn.textContent = state.speakingTarget === 'src' ? '🔊' : '🔊 朗讀';
         btn.classList.remove('speaking');
         panel.classList.remove('speaking-glow');
       }
