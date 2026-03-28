@@ -1113,10 +1113,20 @@
         try { msg = JSON.parse(body)?.error?.message || msg; } catch {}
         throw new Error(msg);
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true });
+      // Use base64 data URL instead of blob URL to avoid iOS Safari
+      // premature 'ended' event bug with blob URLs
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      const audio = new Audio(`data:audio/mp3;base64,${b64}`);
+      // Wait for metadata to load before returning
+      await new Promise((resolve, reject) => {
+        audio.addEventListener('loadedmetadata', resolve, { once: true });
+        audio.addEventListener('error', reject, { once: true });
+        audio.load();
+      });
       return audio;
     }
 
@@ -1140,7 +1150,6 @@
       if (state.audioEl) {
         state.audioEl.pause();
         state.audioEl.currentTime = 0;
-        if (state.audioEl.src?.startsWith('blob:')) URL.revokeObjectURL(state.audioEl.src);
         state.audioEl = null;
       }
       if ('speechSynthesis' in window) speechSynthesis.cancel();
