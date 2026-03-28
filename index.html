@@ -1288,19 +1288,11 @@
       };
 
       recognition.onend = () => {
-        // Auto-translate after speech ends, then auto-speak output
+        // Auto-translate after speech ends (translateNow auto-speaks when done)
         if (activeRecognition === recognition) {
           stopMic();
           const text = el.src.value.trim();
-          if (text) {
-            translateNow().then(() => {
-              // Auto-speak the translation once done
-              const outText = el.out.textContent.trim();
-              if (outText && !state.busy) {
-                toggleSpeak('out');
-              }
-            }).catch(() => {});
-          }
+          if (text) translateNow().catch(() => {});
         }
       };
 
@@ -1654,6 +1646,11 @@ Return ONLY the improved translation. No explanations, no notes.`;
             if (!isAbortError(refineErr)) console.warn('Refine failed:', refineErr);
           }
           el.outStatus.textContent = '';
+        }
+
+        // Auto-speak output after translation + refine complete
+        if (!controller.signal.aborted && el.out.textContent.trim()) {
+          toggleSpeak('out');
         }
 
       } catch (e) {
