@@ -445,6 +445,7 @@
     .toast-item.toast-error{border-color:var(--dangerBd);background:var(--dangerBg);color:var(--danger)}
     .toast-item.toast-undo{border-color:var(--blueBd);background:var(--blueBg)}
     .toast-item .undo-link{color:var(--blue);font-weight:600;text-decoration:underline;cursor:pointer;margin-left:6px}
+    .toast-item.toast-mute{font-size:20px;font-weight:700;padding:14px 24px;color:var(--text)}
 
     /* ===== Settings overlay ===== */
     .overlay{
@@ -1093,9 +1094,9 @@
         // Unmuted and there's output — speak it now
         toggleSpeak('out');
       } else if (state.mute) {
-        toast('自動朗讀已關閉');
+        toast('🔇 自動朗讀已關閉', 'mute');
       } else {
-        toast('自動朗讀已開啟');
+        toast('🔊 自動朗讀已開啟', 'mute');
       }
     });
     function toggleSpeak(target) {
