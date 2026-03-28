@@ -539,9 +539,99 @@
     .switch input:checked + .slider{background:var(--accent)}
     .switch input:checked + .slider::before{transform:translateX(18px)}
 
+    /* ===== Mic buttons row ===== */
+    .mic-row{
+      display:flex;
+      gap:8px;
+      flex-shrink:0;
+    }
+    .btn-mic{
+      flex:1;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding:14px 10px;
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:var(--radius);
+      font-size:15px;
+      font-weight:600;
+      font-family:inherit;
+      cursor:pointer;
+      -webkit-user-select:none;
+      user-select:none;
+      position:relative;
+      overflow:hidden;
+      transition:box-shadow 200ms, transform 80ms, border-color 200ms, background 200ms;
+      /* Glass base */
+      background:linear-gradient(
+        135deg,
+        rgba(255,255,255,0.10) 0%,
+        rgba(255,255,255,0.04) 40%,
+        rgba(255,255,255,0.02) 60%,
+        rgba(255,255,255,0.07) 100%
+      );
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+      color:var(--text);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.12),
+        inset 0 -1px 0 rgba(0,0,0,0.08),
+        0 2px 8px rgba(0,0,0,0.12);
+    }
+    .btn-mic::before{
+      content:"";
+      position:absolute;
+      top:0;left:-60%;
+      width:50%;height:100%;
+      background:linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+      transform:skewX(-20deg);
+      animation:glass-shine 5s ease-in-out infinite;
+      pointer-events:none;
+    }
+    .btn-mic:active{transform:scale(0.97)}
+    .btn-mic .mic-icon{font-size:20px}
+    .btn-mic .mic-lang{font-size:14px;font-weight:600}
+    .btn-mic .mic-hint{font-size:11px;opacity:0.5;font-weight:400}
+
+    /* Recording state */
+    .btn-mic.recording{
+      border-color:var(--dangerBd);
+      background:linear-gradient(
+        135deg,
+        rgba(248,113,113,0.15) 0%,
+        rgba(248,113,113,0.05) 50%,
+        rgba(248,113,113,0.10) 100%
+      );
+      animation:mic-pulse 1.5s ease-in-out infinite;
+    }
+    .btn-mic.recording .mic-icon{
+      animation:mic-bounce 0.8s ease-in-out infinite;
+    }
+    @keyframes mic-pulse{
+      0%,100%{box-shadow:0 0 8px rgba(248,113,113,0.15),inset 0 1px 0 rgba(255,255,255,0.12),0 2px 8px rgba(0,0,0,0.12)}
+      50%{box-shadow:0 0 24px rgba(248,113,113,0.35),inset 0 1px 0 rgba(255,255,255,0.15),0 2px 8px rgba(0,0,0,0.12)}
+    }
+    @keyframes mic-bounce{
+      0%,100%{transform:scale(1)}
+      50%{transform:scale(1.2)}
+    }
+
+    /* Light theme mic */
+    [data-theme="light"] .btn-mic{
+      border-color:rgba(0,0,0,0.08);
+      background:linear-gradient(135deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.5) 100%);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,0.5),inset 0 -1px 0 rgba(0,0,0,0.03),0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    /* Unsupported state */
+    .btn-mic:disabled{opacity:0.35;cursor:not-allowed;animation:none}
+
     @media (prefers-reduced-motion: reduce){
       .toast-item,.toast-item.show,.toast-item.out{transform:translateX(-50%)}
       .panel.loading .output-text::before{animation:none;opacity:0.5}
+      .btn-mic.recording{animation:none}
+      .btn-mic.recording .mic-icon{animation:none}
     }
   </style>
 </head>
@@ -593,6 +683,18 @@
       <span style="flex:1"></span>
       <button class="icon" id="btnTheme" aria-label="切換主題" title="切換主題">◑</button>
       <button class="icon" id="btnSettings" aria-label="設定" title="設定">⚙</button>
+    </div>
+
+    <!-- Mic buttons -->
+    <div class="mic-row">
+      <button class="btn-mic" id="btnMicZh" aria-label="中文語音輸入">
+        <span class="mic-icon">🎤</span>
+        <span class="mic-lang">中文</span>
+      </button>
+      <button class="btn-mic" id="btnMicJa" aria-label="日本語語音輸入">
+        <span class="mic-icon">🎤</span>
+        <span class="mic-lang">日本語</span>
+      </button>
     </div>
 
     <!-- Source panel -->
@@ -759,6 +861,8 @@
       btnSpeakSrc: $('btnSpeakSrc'),
       btnSpeakOut: $('btnSpeakOut'),
       stopFab: $('stopFab'),
+      btnMicZh: $('btnMicZh'),
+      btnMicJa: $('btnMicJa'),
     };
 
     // Populate model select
@@ -1098,6 +1202,116 @@
       state.speaking = false;
       state.speakingTarget = null;
       el.stopFab.classList.remove('show');
+    }
+
+    // --- Speech Recognition (Mic buttons) ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let activeRecognition = null;
+    let activeMicLang = null;
+
+    if (!SpeechRecognition) {
+      el.btnMicZh.disabled = true;
+      el.btnMicJa.disabled = true;
+      el.btnMicZh.title = '此瀏覽器不支援語音輸入';
+      el.btnMicJa.title = '此瀏覽器不支援語音輸入';
+    }
+
+    el.btnMicZh.addEventListener('click', () => toggleMic('zh-TW'));
+    el.btnMicJa.addEventListener('click', () => toggleMic('ja'));
+
+    function toggleMic(lang) {
+      if (activeRecognition && activeMicLang === lang) {
+        stopMic();
+        return;
+      }
+      if (activeRecognition) stopMic();
+      startMic(lang);
+    }
+
+    function startMic(lang) {
+      if (!SpeechRecognition) return;
+
+      // Set translation direction based on mic language
+      const newDirection = lang === 'zh-TW' ? 'zh2ja' : 'ja2zh';
+      if (state.direction !== newDirection) {
+        state.direction = newDirection;
+        localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
+        updateDirectionUI();
+      }
+
+      // Set textarea lang attribute to hint iOS keyboard
+      el.src.setAttribute('lang', lang === 'zh-TW' ? 'zh-TW' : 'ja');
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = lang === 'zh-TW' ? 'zh-TW' : 'ja-JP';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      activeRecognition = recognition;
+      activeMicLang = lang;
+
+      const btn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
+      const otherBtn = lang === 'zh-TW' ? el.btnMicJa : el.btnMicZh;
+      btn.classList.add('recording');
+      otherBtn.classList.remove('recording');
+      btn.querySelector('.mic-icon').textContent = '⏹';
+
+      let finalTranscript = el.src.value;
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interim += transcript;
+          }
+        }
+        el.src.value = finalTranscript + interim;
+        el.srcCount.textContent = String(el.src.value.length);
+        persistSrcText();
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'no-speech') {
+          toast('沒有偵測到語音，請再試一次');
+        } else if (event.error === 'not-allowed') {
+          toastError('請允許麥克風權限');
+        } else if (event.error !== 'aborted') {
+          toastError('語音辨識錯誤：' + event.error);
+        }
+        stopMic();
+      };
+
+      recognition.onend = () => {
+        // Auto-translate after speech ends
+        if (activeRecognition === recognition) {
+          stopMic();
+          const text = el.src.value.trim();
+          if (text) translateNow().catch(() => {});
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {
+        toastError('無法啟動語音辨識');
+        stopMic();
+      }
+    }
+
+    function stopMic() {
+      if (activeRecognition) {
+        try { activeRecognition.stop(); } catch {}
+        activeRecognition = null;
+      }
+      el.btnMicZh.classList.remove('recording');
+      el.btnMicJa.classList.remove('recording');
+      el.btnMicZh.querySelector('.mic-icon').textContent = '🎤';
+      el.btnMicJa.querySelector('.mic-icon').textContent = '🎤';
+      activeMicLang = null;
     }
 
     // --- Input events ---
