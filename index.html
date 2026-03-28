@@ -643,12 +643,6 @@
       </div>
 
       <div class="field">
-        <label for="ttsKey">Google Cloud TTS API Key（選填）</label>
-        <input class="in" id="ttsKey" type="password" placeholder="AIzaSy…" autocomplete="off" />
-        <div class="hint">提供金鑰可使用高品質語音；未填則使用瀏覽器內建語音</div>
-      </div>
-
-      <div class="field">
         <label for="model">翻譯模型</label>
         <select id="model"></select>
       </div>
@@ -739,7 +733,8 @@
       TEMP_REFINE: 0.4,
       MOBILE_BREAKPOINT: 900,
       API_BASE: 'https://api.openai.com/v1',
-      TTS_BASE: 'https://texttospeech.googleapis.com/v1',
+      TTS_BASE: 'https://api.openai.com/v1/audio/speech',
+      TTS_VOICE: 'nova',
       TTS_TIMEOUT_MIN_MS: 15000,
       COPY_FLASH_MS: 1200,
       TOAST_MS: 3000,
@@ -750,7 +745,6 @@
 
     const STORAGE_KEYS = {
       API_KEY: 'jptw_api_key',
-      TTS_KEY: 'jptw_tts_key',
       MODEL: 'jptw_model',
       AUTO: 'jptw_auto',
       THEME: 'jptw_theme',
@@ -765,13 +759,13 @@
     const LANG = {
       'zh-TW': {
         display: '中文',
-        tts: { cloudLang: 'cmn-TW', cloudVoice: 'cmn-TW-Wavenet-A', localLang: 'zh-TW' },
+        tts: { localLang: 'zh-TW' },
         promptName: '繁體中文（台灣）',
         translateExtra: '\n用詞以台灣常用說法，避免簡體用語，標點採全形。口吻自然。',
       },
       'ja': {
         display: '日本語',
-        tts: { cloudLang: 'ja-JP', cloudVoice: 'ja-JP-Neural2-B', localLang: 'ja-JP' },
+        tts: { localLang: 'ja-JP' },
         promptName: '日本語',
         translateExtra: '\n自然で読みやすい標準的な文体で訳す。旅行会話でも丁寧語（です・ます）を基本とする。',
       },
@@ -780,7 +774,6 @@
     // --- State ---
     const state = {
       apiKey: (localStorage.getItem(STORAGE_KEYS.API_KEY) || '').trim(),
-      ttsApiKey: (localStorage.getItem(STORAGE_KEYS.TTS_KEY) || '').trim(),
       model: localStorage.getItem(STORAGE_KEYS.MODEL) || 'gpt-5.3-instant',
       auto: (localStorage.getItem(STORAGE_KEYS.AUTO) ?? '1') === '1',
       theme: localStorage.getItem(STORAGE_KEYS.THEME) || 'dark',
@@ -820,7 +813,6 @@
       btnDone: $('btnDone'),
       btnTheme: $('btnTheme'),
       apiKey: $('apiKey'),
-      ttsKey: $('ttsKey'),
       model: $('model'),
       auto: $('auto'),
       src: $('src'),
@@ -852,7 +844,6 @@
 
     // Init from state
     el.apiKey.value = state.apiKey;
-    el.ttsKey.value = state.ttsApiKey;
     el.model.value = state.model;
     el.auto.checked = state.auto;
 
@@ -1024,11 +1015,6 @@
       localStorage.setItem(STORAGE_KEYS.API_KEY, state.apiKey);
     });
 
-    el.ttsKey.addEventListener('input', (e) => {
-      state.ttsApiKey = e.target.value.trim();
-      localStorage.setItem(STORAGE_KEYS.TTS_KEY, state.ttsApiKey);
-    });
-
     el.model.addEventListener('change', (e) => {
       state.model = e.target.value;
       localStorage.setItem(STORAGE_KEYS.MODEL, state.model);
@@ -1087,9 +1073,9 @@
       const ttsAc = new AbortController();
       state.ttsController = ttsAc;
 
-      if (state.ttsApiKey) {
+      if (state.apiKey) {
         try {
-          const audio = await speakCloud(text, cfg.cloudLang, cfg.cloudVoice, ttsAc.signal);
+          const audio = await speakCloud(text, ttsAc.signal);
           if (ttsAc.signal.aborted) return;
           state.audioEl = audio;
           audio.onended = onDone;
@@ -1110,14 +1096,18 @@
       } catch { onDone(); }
     }
 
-    async function speakCloud(text, langCode, voiceName, signal) {
-      const res = await fetch(`${CONFIG.TTS_BASE}/text:synthesize`, {
+    async function speakCloud(text, signal) {
+      const res = await fetch(CONFIG.TTS_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-goog-api-key': state.ttsApiKey },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.apiKey}`,
+        },
         body: JSON.stringify({
-          input: { text },
-          voice: { languageCode: langCode, name: voiceName },
-          audioConfig: { audioEncoding: 'MP3' },
+          model: 'tts-1',
+          input: text,
+          voice: CONFIG.TTS_VOICE,
+          response_format: 'mp3',
         }),
         signal,
       });
@@ -1125,8 +1115,11 @@
         const body = await res.text();
         throw new Error(body || `TTS ${res.status}`);
       }
-      const data = await res.json();
-      return new Audio(`data:audio/mp3;base64,${data.audioContent}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true });
+      return audio;
     }
 
     function speakLocal(text, localLang) {
