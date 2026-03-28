@@ -445,7 +445,20 @@
     .toast-item.toast-error{border-color:var(--dangerBd);background:var(--dangerBg);color:var(--danger)}
     .toast-item.toast-undo{border-color:var(--blueBd);background:var(--blueBg)}
     .toast-item .undo-link{color:var(--blue);font-weight:600;text-decoration:underline;cursor:pointer;margin-left:6px}
-    .toast-item.toast-mute{font-size:20px;font-weight:700;padding:14px 24px;color:var(--text)}
+    .toast-item.toast-mute{
+      position:fixed;
+      bottom:auto;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%);
+      font-size:22px;
+      font-weight:700;
+      padding:18px 32px;
+      color:var(--text);
+      box-shadow:0 8px 32px rgba(0,0,0,0.4);
+      z-index:10000;
+    }
+    .toast-item.toast-mute.show{transform:translate(-50%,-50%)}
 
     /* ===== Settings overlay ===== */
     .overlay{
