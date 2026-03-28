@@ -256,31 +256,6 @@
     .btn-translate:active{transform:scale(0.98)}
     .btn-translate:disabled{opacity:0.4;cursor:not-allowed;transform:none}
 
-    /* Speak/Mute toggle button — muted state */
-    .btn-speak-out.muted{
-      color:var(--muted);
-      border-color:rgba(128,128,128,0.2);
-      background:linear-gradient(
-        135deg,
-        rgba(128,128,128,0.10) 0%,
-        rgba(128,128,128,0.04) 40%,
-        rgba(128,128,128,0.02) 60%,
-        rgba(128,128,128,0.07) 100%
-      );
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.08),
-        inset 0 -1px 0 rgba(0,0,0,0.06),
-        0 2px 6px rgba(0,0,0,0.10);
-      animation:none;
-    }
-    .btn-speak-out.muted::before{display:none}
-    [data-theme="light"] .btn-speak-out.muted{
-      color:var(--muted);
-      border-color:rgba(0,0,0,0.06);
-      background:linear-gradient(135deg, rgba(200,200,200,0.3) 0%, rgba(200,200,200,0.15) 50%, rgba(200,200,200,0.25) 100%);
-      box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),0 2px 6px rgba(0,0,0,0.04);
-    }
-
     /* ===== Divider between panels ===== */
     .panel-divider{
       width:100%;
@@ -447,20 +422,6 @@
     .toast-item.toast-error{border-color:var(--dangerBd);background:var(--dangerBg);color:var(--danger)}
     .toast-item.toast-undo{border-color:var(--blueBd);background:var(--blueBg)}
     .toast-item .undo-link{color:var(--blue);font-weight:600;text-decoration:underline;cursor:pointer;margin-left:6px}
-    .toast-item.toast-mute{
-      position:fixed;
-      bottom:auto;
-      top:50%;
-      left:50%;
-      transform:translate(-50%,-50%);
-      font-size:22px;
-      font-weight:700;
-      padding:18px 32px;
-      color:var(--text);
-      box-shadow:0 8px 32px rgba(0,0,0,0.4);
-      z-index:10000;
-    }
-    .toast-item.toast-mute.show{transform:translate(-50%,-50%)}
 
     /* ===== Settings overlay ===== */
     .overlay{
@@ -796,7 +757,6 @@
       SRC_TEXT: 'jptw_src_text',
       DIRECTION: 'jptw_direction',
       LAST_MODEL: 'jptw_last_model',
-      MUTE: 'jptw_mute',
     };
 
     const MODEL_FALLBACK_CHAIN = ['gpt-5.3-instant','gpt-5.4','gpt-5.2','gpt-5.1','gpt-4o'];
@@ -823,7 +783,6 @@
       ttsApiKey: (localStorage.getItem(STORAGE_KEYS.TTS_KEY) || '').trim(),
       model: localStorage.getItem(STORAGE_KEYS.MODEL) || 'gpt-5.3-instant',
       auto: (localStorage.getItem(STORAGE_KEYS.AUTO) ?? '1') === '1',
-      mute: localStorage.getItem(STORAGE_KEYS.MUTE) === '1',
       theme: localStorage.getItem(STORAGE_KEYS.THEME) || 'dark',
       // direction: 'zh2ja' or 'ja2zh'
       direction: localStorage.getItem(STORAGE_KEYS.DIRECTION) || 'zh2ja',
@@ -915,8 +874,7 @@
       const item = document.createElement('div');
       item.className = 'toast-item' + (type ? ' toast-' + type : '');
       item.textContent = msg;
-      const host = type === 'mute' ? document.body : toastHost;
-      host.appendChild(item);
+      toastHost.appendChild(item);
       requestAnimationFrame(() => requestAnimationFrame(() => item.classList.add('show')));
 
       const dismiss = () => {
@@ -1085,36 +1043,8 @@
     // --- TTS ---
     el.btnSpeakSrc.addEventListener('click', () => toggleSpeak('src'));
 
-    // Speak/Mute toggle: tap to toggle auto-speak; when not muted and output exists, also speak now
-    function updateMuteUI() {
-      if (state.mute) {
-        el.btnSpeakOut.classList.add('muted');
-        el.btnSpeakOut.innerHTML = '🔇 靜音中';
-      } else {
-        el.btnSpeakOut.classList.remove('muted');
-        el.btnSpeakOut.innerHTML = '🔊 朗讀';
-      }
-    }
-    updateMuteUI();
-
-    el.btnSpeakOut.addEventListener('click', () => {
-      if (state.speaking) {
-        // If currently speaking, stop it
-        stopSpeaking();
-        return;
-      }
-      state.mute = !state.mute;
-      localStorage.setItem(STORAGE_KEYS.MUTE, state.mute ? '1' : '0');
-      updateMuteUI();
-      if (!state.mute && el.out.textContent.trim()) {
-        // Unmuted and there's output — speak it now
-        toggleSpeak('out');
-      } else if (state.mute) {
-        toast('🔇 自動朗讀已關閉', 'mute');
-      } else {
-        toast('🔊 自動朗讀已開啟', 'mute');
-      }
-    });
+    // --- TTS ---
+    el.btnSpeakOut.addEventListener('click', () => toggleSpeak('out'));
     function toggleSpeak(target) {
       if (state.speaking && state.speakingTarget === target) {
         stopSpeaking();
@@ -1136,16 +1066,11 @@
       const panel = target === 'src' ? el.srcPanel : el.outPanel;
       btn.textContent = target === 'src' ? '⏹' : '⏹ 停止朗讀';
       btn.classList.add('speaking');
-      btn.classList.remove('muted');
       panel.classList.add('speaking-glow');
 
       const onDone = () => {
         if (state.ttsTimeout) { clearTimeout(state.ttsTimeout); state.ttsTimeout = null; }
-        if (target === 'src') {
-          btn.textContent = '🔊';
-        } else {
-          updateMuteUI();
-        }
+        btn.textContent = target === 'src' ? '🔊' : '🔊 朗讀';
         btn.classList.remove('speaking');
         panel.classList.remove('speaking-glow');
         state.speaking = false;
@@ -1227,11 +1152,7 @@
       if (state.speakingTarget) {
         const btn = state.speakingTarget === 'src' ? el.btnSpeakSrc : el.btnSpeakOut;
         const panel = state.speakingTarget === 'src' ? el.srcPanel : el.outPanel;
-        if (state.speakingTarget === 'src') {
-          btn.textContent = '🔊';
-        } else {
-          updateMuteUI();
-        }
+        btn.textContent = state.speakingTarget === 'src' ? '🔊' : '🔊 朗讀';
         btn.classList.remove('speaking');
         panel.classList.remove('speaking-glow');
       }
@@ -1712,8 +1633,8 @@ Return ONLY the improved translation. No explanations, no notes.`;
           el.outStatus.textContent = '';
         }
 
-        // Auto-speak output after translation + refine complete (unless muted)
-        if (!state.mute && !controller.signal.aborted && el.out.textContent.trim()) {
+        // Auto-speak output after translation + refine complete
+        if (!controller.signal.aborted && el.out.textContent.trim()) {
           toggleSpeak('out');
         }
 
