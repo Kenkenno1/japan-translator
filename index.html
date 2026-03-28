@@ -913,15 +913,11 @@
     function autoDetectDirection(text) {
       const t = (text || '').trim();
       if (!t) return;
+      // Only auto-switch when kana is detected (unambiguous Japanese)
+      // Pure kanji could be Chinese or Japanese, so we don't switch for CJK-only input
       if (/[\u3040-\u30ff]/.test(t)) {
         if (state.direction !== 'ja2zh') {
           state.direction = 'ja2zh';
-          localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
-          updateDirectionUI();
-        }
-      } else if (/[\u4e00-\u9fff]/.test(t)) {
-        if (state.direction !== 'zh2ja') {
-          state.direction = 'zh2ja';
           localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
           updateDirectionUI();
         }
@@ -1113,7 +1109,9 @@
       });
       if (!res.ok) {
         const body = await res.text();
-        throw new Error(body || `TTS ${res.status}`);
+        let msg = `TTS ${res.status}`;
+        try { msg = JSON.parse(body)?.error?.message || msg; } catch {}
+        throw new Error(msg);
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -1139,7 +1137,12 @@
     function stopSpeaking() {
       if (state.ttsTimeout) { clearTimeout(state.ttsTimeout); state.ttsTimeout = null; }
       if (state.ttsController) { state.ttsController.abort(); state.ttsController = null; }
-      if (state.audioEl) { state.audioEl.pause(); state.audioEl.currentTime = 0; state.audioEl = null; }
+      if (state.audioEl) {
+        state.audioEl.pause();
+        state.audioEl.currentTime = 0;
+        if (state.audioEl.src?.startsWith('blob:')) URL.revokeObjectURL(state.audioEl.src);
+        state.audioEl = null;
+      }
       if ('speechSynthesis' in window) speechSynthesis.cancel();
 
       if (state.speakingTarget) {
@@ -1183,7 +1186,12 @@
         if (text) translateNow().catch(() => {});
         return;
       }
-      if (activeRecognition) stopMic();
+      if (activeRecognition) {
+        // Switching language — stop current mic, wait briefly for onend, then start new
+        stopMic();
+        setTimeout(() => startMic(lang), 120);
+        return;
+      }
       startMic(lang);
     }
 
@@ -1198,15 +1206,6 @@
         updateDirectionUI();
       }
 
-      // Clear input for new speech
-      abortInFlight();
-      el.src.value = '';
-      el.srcCount.textContent = '0';
-      el.out.textContent = '';
-      el.outCount.textContent = '';
-      el.outStatus.textContent = '';
-      persistSrcText();
-
       // Set textarea lang attribute to hint iOS keyboard
       el.src.setAttribute('lang', lang === 'zh-TW' ? 'zh-TW' : 'ja');
 
@@ -1216,8 +1215,26 @@
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
+      // Try to start recognition BEFORE clearing input
+      try {
+        recognition.start();
+        console.log('SpeechRecognition started for', lang);
+      } catch (e) {
+        console.error('SpeechRecognition start failed:', e);
+        toastError('無法啟動語音辨識：' + (e.message || e));
+        return; // Don't clear input if start failed
+      }
+
+      // Start succeeded — now safe to clear input
       activeRecognition = recognition;
       activeMicLang = lang;
+      abortInFlight();
+      el.src.value = '';
+      el.srcCount.textContent = '0';
+      el.out.textContent = '';
+      el.outCount.textContent = '';
+      el.outStatus.textContent = '';
+      persistSrcText();
 
       const btn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
       const otherBtn = lang === 'zh-TW' ? el.btnMicJa : el.btnMicZh;
@@ -1269,14 +1286,6 @@
         }
       };
 
-      try {
-        recognition.start();
-        console.log('SpeechRecognition started for', lang);
-      } catch (e) {
-        console.error('SpeechRecognition start failed:', e);
-        toastError('無法啟動語音辨識：' + (e.message || e));
-        stopMic();
-      }
     }
 
     function stopMic() {
@@ -1360,6 +1369,7 @@
     });
 
     function abortInFlight() {
+      if (state.debounce) { clearTimeout(state.debounce); state.debounce = null; }
       if (state.controller) {
         try { state.controller.abort(); } catch {}
       }
@@ -1371,8 +1381,9 @@
     function modelChain(primary) {
       const out = [];
       const add = (m) => { if (m && !out.includes(m)) out.push(m); };
-      if (state.lastWorkingModel && state.lastWorkingModel !== primary) add(state.lastWorkingModel);
+      // User's selected model always comes first
       add(primary);
+      if (state.lastWorkingModel) add(state.lastWorkingModel);
       for (const m of MODEL_FALLBACK_CHAIN) add(m);
       return out;
     }
@@ -1583,6 +1594,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
 
         let doneFlag = false;
         while (true) {
+          if (controller.signal.aborted) break;
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
