@@ -913,7 +913,8 @@
       const item = document.createElement('div');
       item.className = 'toast-item' + (type ? ' toast-' + type : '');
       item.textContent = msg;
-      toastHost.appendChild(item);
+      const host = type === 'mute' ? document.body : toastHost;
+      host.appendChild(item);
       requestAnimationFrame(() => requestAnimationFrame(() => item.classList.add('show')));
 
       const dismiss = () => {
