@@ -1062,9 +1062,13 @@
 
       const charMs = /[\u3040-\u9fff]/.test(text) ? 120 : 80;
       const dynamicTimeout = Math.max(CONFIG.TTS_TIMEOUT_MIN_MS, text.length * charMs);
-      state.ttsTimeout = setTimeout(() => {
-        if (state.speaking && state.speakingTarget === target) stopSpeaking();
-      }, dynamicTimeout);
+
+      // Start safety timeout only AFTER playback begins (not before API call)
+      const startSafetyTimer = () => {
+        state.ttsTimeout = setTimeout(() => {
+          if (state.speaking && state.speakingTarget === target) stopSpeaking();
+        }, dynamicTimeout);
+      };
 
       const ttsAc = new AbortController();
       state.ttsController = ttsAc;
@@ -1076,7 +1080,10 @@
           state.audioEl = audio;
           audio.onended = onDone;
           audio.onerror = onDone;
-          try { await audio.play(); } catch {
+          try {
+            await audio.play();
+            startSafetyTimer(); // Timer starts after playback begins
+          } catch {
             state.audioEl = null;
           }
           if (state.audioEl) return;
@@ -1088,6 +1095,7 @@
       if (!('speechSynthesis' in window)) { onDone(); return; }
       try {
         const u = speakLocal(text, cfg.localLang);
+        startSafetyTimer();
         u.onend = u.onerror = onDone;
       } catch { onDone(); }
     }
