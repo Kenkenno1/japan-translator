@@ -226,14 +226,6 @@
         0 2px 8px rgba(0,0,0,0.06);
     }
 
-    /* Status chip for refining */
-    .status-chip{
-      font-size:11px;
-      color:var(--muted);
-      opacity:0.7;
-      white-space:nowrap;
-    }
-
     /* ===== Translate button (big, prominent) ===== */
     .btn-translate{
       display:flex;
@@ -819,7 +811,6 @@
     };
 
     // --- Utilities ---
-    function clamp(n, a, b) { return Math.min(b, Math.max(a, n)); }
     function isAbortError(e) { return e && (e.name === 'AbortError' || e.code === 20); }
 
     async function safeReadText(res) {
@@ -896,7 +887,7 @@
       const duration = durationMs || CONFIG.TOAST_MS;
       const item = document.createElement('div');
       item.className = 'toast-item' + (type ? ' toast-' + type : '');
-      item.innerHTML = msg;
+      item.textContent = msg;
       toastHost.appendChild(item);
       requestAnimationFrame(() => requestAnimationFrame(() => item.classList.add('show')));
 
@@ -916,17 +907,18 @@
     function toastError(msg) { toast(msg, 'error', 5000); }
 
     function toastUndo(msg, onUndo) {
-      const t = toast(msg + '<span class="undo-link">復原</span>', 'undo', CONFIG.UNDO_MS);
+      const t = toast(msg, 'undo', CONFIG.UNDO_MS);
       if (!t) return;
-      const link = t.item.querySelector('.undo-link');
-      if (link) {
-        link.addEventListener('click', (e) => {
-          e.stopPropagation();
-          clearTimeout(t.timer);
-          t.dismiss();
-          if (onUndo) onUndo();
-        });
-      }
+      const link = document.createElement('span');
+      link.className = 'undo-link';
+      link.textContent = '復原';
+      t.item.appendChild(link);
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearTimeout(t.timer);
+        t.dismiss();
+        if (onUndo) onUndo();
+      });
     }
 
     // --- Direction helpers ---
@@ -1064,6 +1056,7 @@
 
     // --- Swap direction ---
     el.btnSwap.addEventListener('click', () => {
+      stopMic();
       state.direction = state.direction === 'zh2ja' ? 'ja2zh' : 'zh2ja';
       localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
       updateDirectionUI();
@@ -1239,6 +1232,15 @@
         updateDirectionUI();
       }
 
+      // Clear input for new speech
+      abortInFlight();
+      el.src.value = '';
+      el.srcCount.textContent = '0';
+      el.out.textContent = '';
+      el.outCount.textContent = '';
+      el.outStatus.textContent = '';
+      persistSrcText();
+
       // Set textarea lang attribute to hint iOS keyboard
       el.src.setAttribute('lang', lang === 'zh-TW' ? 'zh-TW' : 'ja');
 
@@ -1257,7 +1259,7 @@
       otherBtn.classList.remove('recording');
       btn.querySelector('.mic-icon').textContent = '⏹';
 
-      let finalTranscript = el.src.value;
+      let finalTranscript = '';
 
       recognition.onresult = (event) => {
         let interim = '';
@@ -1286,11 +1288,19 @@
       };
 
       recognition.onend = () => {
-        // Auto-translate after speech ends
+        // Auto-translate after speech ends, then auto-speak output
         if (activeRecognition === recognition) {
           stopMic();
           const text = el.src.value.trim();
-          if (text) translateNow().catch(() => {});
+          if (text) {
+            translateNow().then(() => {
+              // Auto-speak the translation once done
+              const outText = el.out.textContent.trim();
+              if (outText && !state.busy) {
+                toggleSpeak('out');
+              }
+            }).catch(() => {});
+          }
         }
       };
 
@@ -1304,8 +1314,9 @@
 
     function stopMic() {
       if (activeRecognition) {
-        try { activeRecognition.stop(); } catch {}
+        const rec = activeRecognition;
         activeRecognition = null;
+        try { rec.stop(); } catch {}
       }
       el.btnMicZh.classList.remove('recording');
       el.btnMicJa.classList.remove('recording');
@@ -1511,6 +1522,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
     // --- Translation ---
     async function translateNow() {
       stopSpeaking();
+      stopMic();
       const text = (el.src.value || '').trim();
 
       if (!state.apiKey) {
@@ -1660,8 +1672,8 @@ Return ONLY the improved translation. No explanations, no notes.`;
     window.addEventListener('beforeunload', () => {
       localStorage.setItem(STORAGE_KEYS.SRC_TEXT, el.src.value);
       if (state.controller) try { state.controller.abort(); } catch {}
-      if (state.ttsController) { state.ttsController.abort(); }
-      if (state.audioEl) { state.audioEl.pause(); }
+      if (state.ttsController) try { state.ttsController.abort(); } catch {}
+      if (state.audioEl) try { state.audioEl.pause(); } catch {}
       if ('speechSynthesis' in window) speechSynthesis.cancel();
       if (state.ttsTimeout) clearTimeout(state.ttsTimeout);
     });
