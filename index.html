@@ -643,11 +643,6 @@
       </div>
 
       <div class="field">
-        <label for="model">翻譯模型</label>
-        <select id="model"></select>
-      </div>
-
-      <div class="field">
         <div class="tog">
           <span>輸入時自動翻譯</span>
           <label class="switch"><input id="auto" type="checkbox" /><span class="slider"></span></label>
@@ -745,15 +740,14 @@
 
     const STORAGE_KEYS = {
       API_KEY: 'jptw_api_key',
-      MODEL: 'jptw_model',
       AUTO: 'jptw_auto',
       THEME: 'jptw_theme',
       SRC_TEXT: 'jptw_src_text',
       DIRECTION: 'jptw_direction',
-      LAST_MODEL: 'jptw_last_model',
     };
 
-    const MODEL_FALLBACK_CHAIN = ['gpt-5.3-instant','gpt-5.4','gpt-5.2','gpt-5.1','gpt-4o'];
+    const TRANSLATE_MODEL = 'gpt-5.3-instant';
+    const MODEL_FALLBACK_CHAIN = [TRANSLATE_MODEL,'gpt-5.4','gpt-5.2','gpt-5.1','gpt-4o'];
 
     // --- Language config ---
     const LANG = {
@@ -774,12 +768,10 @@
     // --- State ---
     const state = {
       apiKey: (localStorage.getItem(STORAGE_KEYS.API_KEY) || '').trim(),
-      model: localStorage.getItem(STORAGE_KEYS.MODEL) || 'gpt-5.3-instant',
       auto: (localStorage.getItem(STORAGE_KEYS.AUTO) ?? '1') === '1',
       theme: localStorage.getItem(STORAGE_KEYS.THEME) || 'dark',
       // direction: 'zh2ja' or 'ja2zh'
       direction: localStorage.getItem(STORAGE_KEYS.DIRECTION) || 'zh2ja',
-      lastWorkingModel: localStorage.getItem(STORAGE_KEYS.LAST_MODEL) || null,
       busy: false,
       controller: null,
       debounce: null,
@@ -790,6 +782,9 @@
       audioEl: null,
       ttsTimeout: null,
       ttsController: null,
+      // HD TTS cache: { text, lang, audio }
+      hdCache: null,
+      hdPreloading: false,
     };
 
     // --- Utilities ---
@@ -813,7 +808,6 @@
       btnDone: $('btnDone'),
       btnTheme: $('btnTheme'),
       apiKey: $('apiKey'),
-      model: $('model'),
       auto: $('auto'),
       src: $('src'),
       srcChip: $('srcChip'),
@@ -834,17 +828,8 @@
       btnMicJa: $('btnMicJa'),
     };
 
-    // Populate model select
-    MODEL_FALLBACK_CHAIN.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = m;
-      el.model.appendChild(opt);
-    });
-
     // Init from state
     el.apiKey.value = state.apiKey;
-    el.model.value = state.model;
     el.auto.checked = state.auto;
 
     // Restore source text
@@ -1011,11 +996,6 @@
       localStorage.setItem(STORAGE_KEYS.API_KEY, state.apiKey);
     });
 
-    el.model.addEventListener('change', (e) => {
-      state.model = e.target.value;
-      localStorage.setItem(STORAGE_KEYS.MODEL, state.model);
-    });
-
     el.auto.addEventListener('change', (e) => {
       state.auto = !!e.target.checked;
       localStorage.setItem(STORAGE_KEYS.AUTO, state.auto ? '1' : '0');
@@ -1063,7 +1043,6 @@
       const charMs = /[\u3040-\u9fff]/.test(text) ? 120 : 80;
       const dynamicTimeout = Math.max(CONFIG.TTS_TIMEOUT_MIN_MS, text.length * charMs);
 
-      // Start safety timeout only AFTER playback begins (not before API call)
       const startSafetyTimer = () => {
         state.ttsTimeout = setTimeout(() => {
           if (state.speaking && state.speakingTarget === target) stopSpeaking();
@@ -1073,6 +1052,36 @@
       const ttsAc = new AbortController();
       state.ttsController = ttsAc;
 
+      // Check if HD audio is cached for this exact text
+      if (state.hdCache && state.hdCache.text === text && state.hdCache.lang === lang && state.hdCache.audio) {
+        try {
+          const audio = state.hdCache.audio;
+          audio.currentTime = 0;
+          state.audioEl = audio;
+          audio.onended = onDone;
+          audio.onerror = onDone;
+          await audio.play();
+          startSafetyTimer();
+          return;
+        } catch {
+          state.audioEl = null;
+          // Fall through to browser TTS
+        }
+      }
+
+      // First play: use browser TTS (instant), preload HD in background
+      if ('speechSynthesis' in window) {
+        try {
+          const u = speakLocal(text, cfg.localLang);
+          startSafetyTimer();
+          u.onend = u.onerror = onDone;
+          // Start HD preload in background (won't interrupt current playback)
+          preloadHD(text, lang);
+          return;
+        } catch { /* fall through */ }
+      }
+
+      // Fallback: try cloud TTS directly if no browser TTS
       if (state.apiKey) {
         try {
           const audio = await speakCloud(text, ttsAc.signal);
@@ -1082,22 +1091,15 @@
           audio.onerror = onDone;
           try {
             await audio.play();
-            startSafetyTimer(); // Timer starts after playback begins
-          } catch {
-            state.audioEl = null;
-          }
+            startSafetyTimer();
+          } catch { state.audioEl = null; }
           if (state.audioEl) return;
         } catch (e) {
           if (ttsAc.signal.aborted) return;
         }
       }
 
-      if (!('speechSynthesis' in window)) { onDone(); return; }
-      try {
-        const u = speakLocal(text, cfg.localLang);
-        startSafetyTimer();
-        u.onend = u.onerror = onDone;
-      } catch { onDone(); }
+      onDone();
     }
 
     async function speakCloud(text, signal) {
@@ -1150,6 +1152,30 @@
       if (best) u.voice = best;
       speechSynthesis.speak(u);
       return u;
+    }
+
+    // Preload OpenAI HD audio in background for second play
+    function preloadHD(text, lang) {
+      if (!state.apiKey) return;
+      // Skip if already cached or preloading for same text
+      if (state.hdCache && state.hdCache.text === text && state.hdCache.lang === lang) return;
+      if (state.hdPreloading) return;
+
+      state.hdPreloading = true;
+      state.hdCache = null;
+      const ac = new AbortController();
+
+      speakCloud(text, ac.signal)
+        .then(audio => {
+          state.hdCache = { text, lang, audio };
+        })
+        .catch(() => {})
+        .finally(() => { state.hdPreloading = false; });
+    }
+
+    function clearHDCache() {
+      state.hdCache = null;
+      state.hdPreloading = false;
     }
 
     function stopSpeaking() {
@@ -1395,14 +1421,8 @@
     }
 
     // --- Model fallback chain ---
-    function modelChain(primary) {
-      const out = [];
-      const add = (m) => { if (m && !out.includes(m)) out.push(m); };
-      // User's selected model always comes first
-      add(primary);
-      if (state.lastWorkingModel) add(state.lastWorkingModel);
-      for (const m of MODEL_FALLBACK_CHAIN) add(m);
-      return out;
+    function modelChain() {
+      return MODEL_FALLBACK_CHAIN;
     }
 
     // --- Prompt builders ---
@@ -1488,7 +1508,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
       });
 
       let lastText = '';
-      for (const model of modelChain(state.model)) {
+      for (const model of modelChain()) {
         const res = await fetch(`${CONFIG.API_BASE}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -1503,11 +1523,6 @@ Return ONLY the improved translation. No explanations, no notes.`;
           lastText = await safeReadText(res);
           if (isInvalidModelError(res.status, lastText)) continue;
           return draft; // fallback to draft on error
-        }
-
-        if (model !== state.lastWorkingModel) {
-          state.lastWorkingModel = model;
-          localStorage.setItem(STORAGE_KEYS.LAST_MODEL, model);
         }
 
         const json = await res.json();
@@ -1544,6 +1559,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
 
       el.out.textContent = '';
       el.outCount.textContent = '';
+      clearHDCache();
 
       const makeBody = (model) => ({
         model,
@@ -1558,7 +1574,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
       try {
         let res = null;
         let lastText = '';
-        for (const model of modelChain(state.model)) {
+        for (const model of modelChain()) {
           res = await fetch(`${CONFIG.API_BASE}/chat/completions`, {
             method: 'POST',
             headers: {
@@ -1569,13 +1585,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
             signal: controller.signal,
           });
 
-          if (res.ok && res.body) {
-            if (model !== state.lastWorkingModel) {
-              state.lastWorkingModel = model;
-              localStorage.setItem(STORAGE_KEYS.LAST_MODEL, model);
-            }
-            break;
-          }
+          if (res.ok && res.body) break;
 
           lastText = await safeReadText(res);
           if (!isInvalidModelError(res.status, lastText)) break;
