@@ -273,6 +273,7 @@
 
     /* ===== Panel ===== */
     .panel{
+      position:relative;
       border-radius:var(--radius);
       background:linear-gradient(180deg, var(--panel), var(--panel2));
       border:1px solid var(--border);
@@ -590,27 +591,45 @@
     .btn-mic .mic-lang{font-size:14px;font-weight:600}
     .btn-mic .mic-hint{font-size:11px;opacity:0.5;font-weight:400}
 
-    /* Recording state */
+    /* Recording state — fully red button */
     .btn-mic.recording{
-      border-color:var(--dangerBd);
+      border-color:rgba(220,38,38,0.8);
       background:linear-gradient(
         135deg,
-        rgba(248,113,113,0.15) 0%,
-        rgba(248,113,113,0.05) 50%,
-        rgba(248,113,113,0.10) 100%
+        rgba(220,38,38,0.85) 0%,
+        rgba(239,68,68,0.90) 50%,
+        rgba(220,38,38,0.85) 100%
       );
+      color:#fff;
       animation:mic-pulse 1.5s ease-in-out infinite;
     }
     .btn-mic.recording .mic-icon{
       animation:mic-bounce 0.8s ease-in-out infinite;
+      color:#fff;
+    }
+    .btn-mic.recording .mic-lang{
+      color:#fff;
     }
     @keyframes mic-pulse{
-      0%,100%{box-shadow:0 0 8px rgba(248,113,113,0.15),inset 0 1px 0 rgba(255,255,255,0.12),0 2px 8px rgba(0,0,0,0.12)}
-      50%{box-shadow:0 0 24px rgba(248,113,113,0.35),inset 0 1px 0 rgba(255,255,255,0.15),0 2px 8px rgba(0,0,0,0.12)}
+      0%,100%{box-shadow:0 0 10px rgba(220,38,38,0.3),inset 0 1px 0 rgba(255,255,255,0.20),0 2px 8px rgba(0,0,0,0.12)}
+      50%{box-shadow:0 0 28px rgba(220,38,38,0.55),inset 0 1px 0 rgba(255,255,255,0.25),0 2px 8px rgba(0,0,0,0.12)}
     }
     @keyframes mic-bounce{
       0%,100%{transform:scale(1)}
       50%{transform:scale(1.2)}
+    }
+
+    /* Blinking border on textarea when mic is recording */
+    #srcPanel.recording-active{
+      border-color:rgba(220,38,38,0.6);
+      animation:recording-border 1.2s ease-in-out infinite;
+    }
+    #srcPanel.recording-active textarea{
+      caret-color:var(--accent);
+    }
+    @keyframes recording-border{
+      0%,100%{border-color:rgba(220,38,38,0.6);box-shadow:0 0 8px rgba(220,38,38,0.15)}
+      50%{border-color:rgba(220,38,38,0.2);box-shadow:0 0 2px rgba(220,38,38,0.05)}
     }
 
     /* Light theme mic */
@@ -628,6 +647,7 @@
       .panel.loading .output-text::before{animation:none;opacity:0.5}
       .btn-mic.recording{animation:none}
       .btn-mic.recording .mic-icon{animation:none}
+      #srcPanel.recording-active{animation:none;border-color:rgba(220,38,38,0.6)}
     }
   </style>
 </head>
@@ -1265,6 +1285,9 @@
       btn.classList.add('recording');
       otherBtn.classList.remove('recording');
       btn.querySelector('.mic-icon').textContent = '⏹';
+      btn.querySelector('.mic-lang').textContent = '停止';
+      el.srcPanel.classList.add('recording-active');
+      el.src.focus();
 
       let finalTranscript = '';
 
@@ -1321,6 +1344,9 @@
       el.btnMicJa.classList.remove('recording');
       el.btnMicZh.querySelector('.mic-icon').textContent = '🎤';
       el.btnMicJa.querySelector('.mic-icon').textContent = '🎤';
+      el.btnMicZh.querySelector('.mic-lang').textContent = '中文';
+      el.btnMicJa.querySelector('.mic-lang').textContent = '日本語';
+      el.srcPanel.classList.remove('recording-active');
       activeMicLang = null;
     }
 
