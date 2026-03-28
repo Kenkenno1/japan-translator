@@ -212,6 +212,15 @@
       0%,100%{box-shadow:0 0 12px rgba(248,113,113,0.15),inset 0 1px 0 rgba(255,255,255,0.15),inset 0 -1px 0 rgba(0,0,0,0.1),0 2px 8px rgba(0,0,0,0.12)}
       50%{box-shadow:0 0 24px rgba(248,113,113,0.35),inset 0 1px 0 rgba(255,255,255,0.2),inset 0 -1px 0 rgba(0,0,0,0.1),0 2px 8px rgba(0,0,0,0.12)}
     }
+    /* Ready-to-speak highlight after translation completes (mobile) */
+    .btn-speak-out.speak-ready{
+      border-color:var(--accentBd);
+      animation:speak-ready-pulse 0.8s ease-in-out 3;
+    }
+    @keyframes speak-ready-pulse{
+      0%,100%{box-shadow:0 0 12px rgba(110,231,183,0.15),inset 0 1px 0 rgba(255,255,255,0.15),0 2px 8px rgba(0,0,0,0.12);transform:scale(1)}
+      50%{box-shadow:0 0 35px rgba(110,231,183,0.50),inset 0 1px 0 rgba(255,255,255,0.25),0 2px 12px rgba(0,0,0,0.15);transform:scale(1.04)}
+    }
     [data-theme="light"] .btn-speak-out{
       background:linear-gradient(
         135deg,
@@ -595,15 +604,15 @@
 
     /* Blinking border on textarea when mic is recording */
     #srcPanel.recording-active{
-      border-color:rgba(220,38,38,0.6);
-      animation:recording-border 1.2s ease-in-out infinite;
+      border-color:rgba(220,38,38,0.8);
+      animation:recording-border 1s ease-in-out infinite;
     }
     #srcPanel.recording-active textarea{
-      caret-color:var(--accent);
+      caret-color:var(--danger);
     }
     @keyframes recording-border{
-      0%,100%{border-color:rgba(220,38,38,0.6);box-shadow:0 0 8px rgba(220,38,38,0.15)}
-      50%{border-color:rgba(220,38,38,0.2);box-shadow:0 0 2px rgba(220,38,38,0.05)}
+      0%,100%{border-color:rgba(220,38,38,0.8);box-shadow:0 0 18px rgba(220,38,38,0.35),inset 0 0 8px rgba(220,38,38,0.08)}
+      50%{border-color:rgba(220,38,38,0.3);box-shadow:0 0 6px rgba(220,38,38,0.10),inset 0 0 2px rgba(220,38,38,0.02)}
     }
 
     /* Light theme mic */
@@ -621,7 +630,8 @@
       .panel.loading .output-text::before{animation:none;opacity:0.5}
       .btn-mic.recording{animation:none}
       .btn-mic.recording .mic-icon{animation:none}
-      #srcPanel.recording-active{animation:none;border-color:rgba(220,38,38,0.6)}
+      #srcPanel.recording-active{animation:none;border-color:rgba(220,38,38,0.8)}
+      .btn-speak-out.speak-ready{animation:none}
     }
   </style>
 </head>
@@ -1008,6 +1018,7 @@
     // --- TTS ---
     el.btnSpeakOut.addEventListener('click', () => toggleSpeak('out'));
     function toggleSpeak(target) {
+      el.btnSpeakOut.classList.remove('speak-ready');
       if (state.speaking && state.speakingTarget === target) {
         stopSpeaking();
         return;
@@ -1667,7 +1678,18 @@ Return ONLY the improved translation. No explanations, no notes.`;
 
         // Auto-speak output after translation + refine complete
         if (!controller.signal.aborted && el.out.textContent.trim()) {
-          toggleSpeak('out');
+          const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+          if (isMobile) {
+            // iOS/Android: can't auto-play audio without user gesture
+            // Flash the speak button to prompt user, and preload HD
+            el.btnSpeakOut.classList.remove('speak-ready');
+            void el.btnSpeakOut.offsetWidth; // force reflow for re-trigger
+            el.btnSpeakOut.classList.add('speak-ready');
+            const tgtLang = getTgtLang();
+            preloadHD(el.out.textContent, tgtLang);
+          } else {
+            toggleSpeak('out');
+          }
         }
 
       } catch (e) {
