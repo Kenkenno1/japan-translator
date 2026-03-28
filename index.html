@@ -408,26 +408,6 @@
     }
 
     /* ===== TTS stop FAB ===== */
-    .stop-fab{
-      position:fixed;
-      bottom:max(20px, env(safe-area-inset-bottom, 20px));
-      right:20px;
-      background:var(--danger);
-      color:#fff;
-      border:none;
-      border-radius:14px;
-      padding:12px 20px;
-      font-weight:600;
-      font-size:14px;
-      cursor:pointer;
-      box-shadow:0 4px 20px rgba(248,113,113,0.4);
-      transform:scale(0);
-      transition:transform 0.2s;
-      z-index:150;
-      font-family:inherit;
-    }
-    .stop-fab.show{transform:scale(1)}
-
     /* ===== Toast ===== */
     #toastHost{
       position:fixed;
@@ -771,9 +751,6 @@
     </div>
   </div>
 
-  <!-- TTS stop FAB -->
-  <button class="stop-fab" id="stopFab" aria-label="停止朗讀">⏹ 停止朗讀</button>
-
   <!-- Toast host -->
   <div id="toastHost"></div>
 
@@ -886,7 +863,6 @@
       btnClear: $('btnClear'),
       btnSpeakSrc: $('btnSpeakSrc'),
       btnSpeakOut: $('btnSpeakOut'),
-      stopFab: $('stopFab'),
       btnMicZh: $('btnMicZh'),
       btnMicJa: $('btnMicJa'),
     };
@@ -1122,8 +1098,6 @@
         toast('自動朗讀已開啟');
       }
     });
-    el.stopFab.addEventListener('click', stopSpeaking);
-
     function toggleSpeak(target) {
       if (state.speaking && state.speakingTarget === target) {
         stopSpeaking();
@@ -1141,23 +1115,25 @@
       const cfg = LANG[lang].tts;
       state.speaking = true;
       state.speakingTarget = target;
-      el.stopFab.classList.add('show');
-
       const btn = target === 'src' ? el.btnSpeakSrc : el.btnSpeakOut;
       const panel = target === 'src' ? el.srcPanel : el.outPanel;
       btn.textContent = target === 'src' ? '⏹' : '⏹ 停止朗讀';
       btn.classList.add('speaking');
+      btn.classList.remove('muted');
       panel.classList.add('speaking-glow');
 
       const onDone = () => {
         if (state.ttsTimeout) { clearTimeout(state.ttsTimeout); state.ttsTimeout = null; }
-        btn.textContent = target === 'src' ? '🔊' : '🔊 朗讀';
+        if (target === 'src') {
+          btn.textContent = '🔊';
+        } else {
+          updateMuteUI();
+        }
         btn.classList.remove('speaking');
         panel.classList.remove('speaking-glow');
         state.speaking = false;
         state.speakingTarget = null;
         state.audioEl = null;
-        el.stopFab.classList.remove('show');
       };
 
       const charMs = /[\u3040-\u9fff]/.test(text) ? 120 : 80;
@@ -1234,13 +1210,16 @@
       if (state.speakingTarget) {
         const btn = state.speakingTarget === 'src' ? el.btnSpeakSrc : el.btnSpeakOut;
         const panel = state.speakingTarget === 'src' ? el.srcPanel : el.outPanel;
-        btn.textContent = state.speakingTarget === 'src' ? '🔊' : '🔊 朗讀';
+        if (state.speakingTarget === 'src') {
+          btn.textContent = '🔊';
+        } else {
+          updateMuteUI();
+        }
         btn.classList.remove('speaking');
         panel.classList.remove('speaking-glow');
       }
       state.speaking = false;
       state.speakingTarget = null;
-      el.stopFab.classList.remove('show');
     }
 
     // --- Speech Recognition (Mic buttons) ---
