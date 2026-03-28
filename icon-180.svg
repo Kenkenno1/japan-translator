@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6EE7B7"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="bubble1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#f0f9ff" stop-opacity="0.90"/>
+    </linearGradient>
+    <linearGradient id="bubble2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef3c7" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#fff7ed" stop-opacity="0.90"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="180" height="180" rx="40" fill="url(#bg)"/>
+
+  <!-- Subtle shine -->
+  <rect width="180" height="90" rx="40" fill="white" opacity="0.08"/>
+
+  <!-- Torii gate (simplified, subtle) -->
+  <g opacity="0.2" transform="translate(90,145)">
+    <rect x="-28" y="-12" width="4" height="12" rx="1" fill="white"/>
+    <rect x="24" y="-12" width="4" height="12" rx="1" fill="white"/>
+    <rect x="-32" y="-16" width="64" height="4" rx="2" fill="white"/>
+    <rect x="-35" y="-22" width="70" height="4" rx="2" fill="white"/>
+  </g>
+
+  <!-- Left speech bubble (Chinese) -->
+  <g filter="url(#shadow)">
+    <path d="M28,38 h52 a12,12 0 0 1 12,12 v30 a12,12 0 0 1 -12,12 h-36 l-10,10 v-10 h-6 a12,12 0 0 1 -12,-12 v-30 a12,12 0 0 1 12,-12 z" fill="url(#bubble1)"/>
+    <text x="54" y="72" font-family="'Noto Serif TC','Hiragino Sans',sans-serif" font-size="22" font-weight="700" fill="#3B82F6" text-anchor="middle">中文</text>
+  </g>
+
+  <!-- Right speech bubble (Japanese) -->
+  <g filter="url(#shadow)">
+    <path d="M100,58 h52 a12,12 0 0 1 12,12 v30 a12,12 0 0 1 -12,12 h-6 v10 l-10,-10 h-36 a12,12 0 0 1 -12,-12 v-30 a12,12 0 0 1 12,-12 z" fill="url(#bubble2)"/>
+    <text x="126" y="92" font-family="'Noto Serif JP','Hiragino Sans',sans-serif" font-size="20" font-weight="700" fill="#EA580C" text-anchor="middle">日本語</text>
+  </g>
+
+  <!-- Arrow between bubbles -->
+  <g transform="translate(90,72)" opacity="0.85">
+    <path d="M-6,0 L6,0 M3,-4 L7,0 L3,4" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+
+  <!-- Sparkles (happy feel) -->
+  <g fill="white" opacity="0.7">
+    <circle cx="22" cy="28" r="2.5"/>
+    <circle cx="158" cy="42" r="2"/>
+    <circle cx="148" cy="28" r="3"/>
+    <circle cx="32" cy="120" r="2"/>
+    <circle cx="155" cy="118" r="2.5"/>
+  </g>
+
+  <!-- Smile arc at bottom -->
+  <path d="M70,128 Q90,142 110,128" stroke="white" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6"/>
+
+  <!-- App name -->
+  <text x="90" y="122" font-family="'Noto Serif TC','Hiragino Sans',sans-serif" font-size="11" font-weight="600" fill="white" text-anchor="middle" opacity="0.9">旅日好幫手</text>
+</svg>
