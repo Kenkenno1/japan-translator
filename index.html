@@ -1244,11 +1244,18 @@
     let activeRecognition = null;
     let activeMicLang = null;
 
+    const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
     if (!SpeechRecognition) {
       el.btnMicZh.disabled = true;
       el.btnMicJa.disabled = true;
-      el.btnMicZh.title = '此瀏覽器不支援語音輸入';
-      el.btnMicJa.title = '此瀏覽器不支援語音輸入';
+      if (isStandalone && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        el.btnMicZh.title = 'PWA 模式不支援語音，請用 Safari 開啟';
+        el.btnMicJa.title = 'PWA 模式不支援語音，請用 Safari 開啟';
+        toast('語音輸入需在 Safari 中使用，PWA 模式暫不支援');
+      } else {
+        el.btnMicZh.title = '此瀏覽器不支援語音輸入';
+        el.btnMicJa.title = '此瀏覽器不支援語音輸入';
+      }
     }
 
     el.btnMicZh.addEventListener('click', () => toggleMic('zh-TW'));
@@ -1305,7 +1312,10 @@
       btn.querySelector('.mic-icon').textContent = '⏹';
       btn.querySelector('.mic-lang').textContent = '停止';
       el.srcPanel.classList.add('recording-active');
-      el.src.focus();
+      // Don't focus textarea on iOS — keyboard popup can block mic permission
+      if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        el.src.focus();
+      }
 
       let finalTranscript = '';
 
@@ -1325,10 +1335,11 @@
       };
 
       recognition.onerror = (event) => {
+        console.error('SpeechRecognition error:', event.error, event.message);
         if (event.error === 'no-speech') {
           toast('沒有偵測到語音，請再試一次');
         } else if (event.error === 'not-allowed') {
-          toastError('請允許麥克風權限');
+          toastError('請允許麥克風權限：請到 設定 → Safari → 麥克風 開啟');
         } else if (event.error !== 'aborted') {
           toastError('語音辨識錯誤：' + event.error);
         }
@@ -1346,8 +1357,10 @@
 
       try {
         recognition.start();
+        console.log('SpeechRecognition started for', lang);
       } catch (e) {
-        toastError('無法啟動語音辨識');
+        console.error('SpeechRecognition start failed:', e);
+        toastError('無法啟動語音辨識：' + (e.message || e));
         stopMic();
       }
     }
