@@ -1078,7 +1078,11 @@
           audio.onended = onDone;
           audio.onerror = onDone;
           await audio.play();
-          startSafetyTimer();
+          // Use actual audio duration for timeout (more accurate than character estimate)
+          const hdTimeout = (isFinite(audio.duration) ? audio.duration * 1000 : dynamicTimeout) + 5000;
+          state.ttsTimeout = setTimeout(() => {
+            if (state.speaking && state.speakingTarget === target) stopSpeaking();
+          }, hdTimeout);
           return;
         } catch {
           state.audioEl = null;
@@ -1108,7 +1112,10 @@
           audio.onerror = onDone;
           try {
             await audio.play();
-            startSafetyTimer();
+            const hdTimeout = (isFinite(audio.duration) ? audio.duration * 1000 : dynamicTimeout) + 5000;
+            state.ttsTimeout = setTimeout(() => {
+              if (state.speaking && state.speakingTarget === target) stopSpeaking();
+            }, hdTimeout);
           } catch { state.audioEl = null; }
           if (state.audioEl) return;
         } catch (e) {
