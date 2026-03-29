@@ -1060,10 +1060,11 @@
       const charMs = /[\u3040-\u9fff]/.test(text) ? 120 : 80;
       const dynamicTimeout = Math.max(CONFIG.TTS_TIMEOUT_MIN_MS, text.length * charMs);
 
-      const startSafetyTimer = () => {
+      const startSafetyTimer = (multiplier) => {
+        const timeout = dynamicTimeout * (multiplier || 1);
         state.ttsTimeout = setTimeout(() => {
           if (state.speaking && state.speakingTarget === target) stopSpeaking();
-        }, dynamicTimeout);
+        }, timeout);
       };
 
       const ttsAc = new AbortController();
@@ -1094,7 +1095,7 @@
       if ('speechSynthesis' in window) {
         try {
           const u = speakLocal(text, cfg.localLang);
-          startSafetyTimer();
+          startSafetyTimer(3); // 3x buffer — onend handles normal completion
           u.onend = u.onerror = onDone;
           // Start HD preload in background (won't interrupt current playback)
           preloadHD(text, lang);
