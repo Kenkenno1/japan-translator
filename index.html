@@ -756,8 +756,9 @@
       DIRECTION: 'jptw_direction',
     };
 
-    const TRANSLATE_MODEL = 'gpt-5.3-instant';
-    const MODEL_FALLBACK_CHAIN = [TRANSLATE_MODEL,'gpt-5.4','gpt-5.2','gpt-5.1','gpt-4o'];
+    const TRANSLATE_MODEL = 'gpt-5.4-mini';
+    const TRANSLATE_FALLBACK = [TRANSLATE_MODEL, 'gpt-5.4-nano', 'gpt-4o'];
+    const REFINE_FALLBACK = ['gpt-5.4', TRANSLATE_MODEL, 'gpt-4o'];
 
     // --- Language config ---
     const LANG = {
@@ -795,6 +796,7 @@
       // HD TTS cache: { text, lang, audio }
       hdCache: null,
       hdPreloading: false,
+      hdAbortController: null,
     };
 
     // --- Utilities ---
@@ -908,11 +910,16 @@
     function autoDetectDirection(text) {
       const t = (text || '').trim();
       if (!t) return;
-      // Only auto-switch when kana is detected (unambiguous Japanese)
-      // Pure kanji could be Chinese or Japanese, so we don't switch for CJK-only input
-      if (/[\u3040-\u30ff]/.test(t)) {
+      const hasKana = /[\u3040-\u30ff]/.test(t);
+      if (hasKana) {
         if (state.direction !== 'ja2zh') {
           state.direction = 'ja2zh';
+          localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
+          updateDirectionUI();
+        }
+      } else if (/[，。！？、；：「」『』（）\u3100-\u312f]/.test(t)) {
+        if (state.direction !== 'zh2ja') {
+          state.direction = 'zh2ja';
           localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
           updateDirectionUI();
         }
@@ -1003,6 +1010,8 @@
 
     el.apiKey.addEventListener('input', (e) => {
       state.apiKey = e.target.value.trim();
+    });
+    el.apiKey.addEventListener('blur', () => {
       localStorage.setItem(STORAGE_KEYS.API_KEY, state.apiKey);
     });
 
@@ -1011,11 +1020,8 @@
       localStorage.setItem(STORAGE_KEYS.AUTO, state.auto ? '1' : '0');
     });
 
-    // --- Swap direction ---
     // --- TTS ---
     el.btnSpeakSrc.addEventListener('click', () => toggleSpeak('src'));
-
-    // --- TTS ---
     el.btnSpeakOut.addEventListener('click', () => toggleSpeak('out'));
     function toggleSpeak(target) {
       el.btnSpeakOut.classList.remove('speak-ready');
@@ -1168,23 +1174,35 @@
     // Preload OpenAI HD audio in background for second play
     function preloadHD(text, lang) {
       if (!state.apiKey) return;
-      // Skip if already cached or preloading for same text
+      // Skip if already cached for same text
       if (state.hdCache && state.hdCache.text === text && state.hdCache.lang === lang) return;
-      if (state.hdPreloading) return;
+      // Abort any in-flight preload before starting a new one
+      if (state.hdAbortController) {
+        state.hdAbortController.abort();
+        state.hdAbortController = null;
+      }
 
       state.hdPreloading = true;
       state.hdCache = null;
       const ac = new AbortController();
+      state.hdAbortController = ac;
 
       speakCloud(text, ac.signal)
         .then(audio => {
           state.hdCache = { text, lang, audio };
         })
         .catch(() => {})
-        .finally(() => { state.hdPreloading = false; });
+        .finally(() => {
+          state.hdPreloading = false;
+          if (state.hdAbortController === ac) state.hdAbortController = null;
+        });
     }
 
     function clearHDCache() {
+      if (state.hdAbortController) {
+        state.hdAbortController.abort();
+        state.hdAbortController = null;
+      }
       state.hdCache = null;
       state.hdPreloading = false;
     }
@@ -1432,8 +1450,8 @@
     }
 
     // --- Model fallback chain ---
-    function modelChain() {
-      return MODEL_FALLBACK_CHAIN;
+    function modelChain(type) {
+      return type === 'refine' ? REFINE_FALLBACK : TRANSLATE_FALLBACK;
     }
 
     // --- Prompt builders ---
@@ -1519,7 +1537,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
       });
 
       let lastText = '';
-      for (const model of modelChain()) {
+      for (const model of modelChain('refine')) {
         const res = await fetch(`${CONFIG.API_BASE}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -1585,7 +1603,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
       try {
         let res = null;
         let lastText = '';
-        for (const model of modelChain()) {
+        for (const model of modelChain('translate')) {
           res = await fetch(`${CONFIG.API_BASE}/chat/completions`, {
             method: 'POST',
             headers: {
@@ -1662,11 +1680,14 @@ Return ONLY the improved translation. No explanations, no notes.`;
 
         // --- Auto refine ---
         const draft = el.out.textContent.trim();
+        const draftSnapshot = draft; // snapshot before refine to detect user edits
         if (draft && !controller.signal.aborted) {
           el.outStatus.textContent = '✦ 潤稿中…';
           try {
             const refined = await refineTranslation(text, draft, srcLang, tgtLang, controller.signal);
-            if (!controller.signal.aborted && refined && refined !== draft) {
+            const currentText = el.out.textContent.trim();
+            // Skip overwrite if user edited the output during refine
+            if (!controller.signal.aborted && refined && refined !== draft && currentText === draftSnapshot) {
               el.out.textContent = refined;
               el.outCount.textContent = String(refined.length);
             }
