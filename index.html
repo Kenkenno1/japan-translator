@@ -448,27 +448,29 @@
       padding:32px 24px;
     }
     .modal-close{
-      position:fixed;
-      top:max(16px, env(safe-area-inset-top));
-      right:16px;
       background:none;
-      border:none;
-      color:var(--text);
-      font-size:32px;
+      border:1px solid var(--border);
+      color:var(--muted);
+      font-size:14px;
+      font-weight:500;
+      font-family:inherit;
       cursor:pointer;
-      padding:8px;
-      border-radius:12px;
+      padding:8px 16px;
+      border-radius:10px;
       line-height:1;
-      opacity:0.6;
       transition:opacity 0.2s, background 0.2s;
-      z-index:51;
+      flex-shrink:0;
     }
-    .modal-close:hover{opacity:1;background:var(--card)}
+    .modal-close:hover{opacity:0.8;background:var(--panel)}
+    .settings-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:24px;
+    }
     .settings-title{
       font-size:22px;
       font-weight:700;
-      margin-bottom:24px;
-      text-align:center;
     }
     .settings-prompt{
       font-size:15px;
@@ -689,9 +691,11 @@
 
   <!-- Settings overlay (fullscreen) -->
   <div class="overlay" id="settingsOverlay" aria-hidden="true">
-    <button class="modal-close" id="btnCloseSettings" aria-label="關閉設定" title="關閉">✕</button>
     <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
-      <div class="settings-title">設定</div>
+      <div class="settings-header">
+        <div class="settings-title">設定</div>
+        <button class="modal-close" id="btnCloseSettings" aria-label="關閉設定">關閉</button>
+      </div>
       <div class="settings-prompt" id="settingsPrompt">請輸入 OpenAI API Key</div>
 
       <div class="field">
