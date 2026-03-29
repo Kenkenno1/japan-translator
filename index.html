@@ -2,7 +2,7 @@
 <html lang="zh-Hant" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="旅日翻譯" />
@@ -626,12 +626,15 @@
     .btn-mic:disabled{opacity:0.35;cursor:not-allowed;animation:none}
 
     @media (prefers-reduced-motion: reduce){
-      .toast-item,.toast-item.show,.toast-item.out{transform:translateX(-50%)}
+      .toast-item,.toast-item.show,.toast-item.out{transform:translateY(0)}
       .panel.loading .output-text::before{animation:none;opacity:0.5}
       .btn-mic.recording{animation:none}
       .btn-mic.recording .mic-icon{animation:none}
       #srcPanel.recording-active{animation:none;border-color:rgba(220,38,38,0.8)}
       .btn-speak-out.speak-ready{animation:none}
+      .btn-speak-out,.btn-speak-out::before,
+      .btn-mic::before,
+      .speaking-glow::after{animation:none}
     }
   </style>
 </head>
@@ -699,7 +702,7 @@
           <button class="icon" id="btnClear" aria-label="清除" title="清除">⌫</button>
         </div>
       </div>
-      <textarea id="src" placeholder="輸入中文或日文…"></textarea>
+      <textarea id="src" placeholder="輸入中文或日文…" aria-label="原文輸入"></textarea>
     </section>
 
     <!-- Divider between panels -->
@@ -788,6 +791,7 @@
       debounce: null,
       srcPersistTimer: null,
       // TTS
+      speakGeneration: 0,
       speaking: false,
       speakingTarget: null, // 'src' or 'out'
       audioEl: null,
@@ -1005,7 +1009,11 @@
     function openSettings(show) {
       el.settingsOverlay.classList.toggle('show', !!show);
       el.settingsOverlay.setAttribute('aria-hidden', show ? 'false' : 'true');
-      if (show) el.apiKey.focus();
+      if (show) {
+        el.apiKey.focus();
+      } else {
+        localStorage.setItem(STORAGE_KEYS.API_KEY, state.apiKey);
+      }
     }
 
     el.apiKey.addEventListener('input', (e) => {
@@ -1038,6 +1046,7 @@
       if (!text?.trim()) return;
       if (state.speaking) stopSpeaking();
 
+      const gen = ++state.speakGeneration;
       const cfg = LANG[lang].tts;
       state.speaking = true;
       state.speakingTarget = target;
@@ -1048,6 +1057,7 @@
       panel.classList.add('speaking-glow');
 
       const onDone = () => {
+        if (gen !== state.speakGeneration) return; // stale callback, ignore
         if (state.ttsTimeout) { clearTimeout(state.ttsTimeout); state.ttsTimeout = null; }
         btn.textContent = target === 'src' ? '🔊' : '🔊 朗讀';
         btn.classList.remove('speaking');
@@ -1152,9 +1162,11 @@
       // premature 'ended' event bug with blob URLs
       const buf = await res.arrayBuffer();
       const bytes = new Uint8Array(buf);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      const b64 = btoa(binary);
+      const chunks = [];
+      for (let i = 0; i < bytes.length; i += 8192) {
+        chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)));
+      }
+      const b64 = btoa(chunks.join(''));
       const audio = new Audio(`data:audio/mp3;base64,${b64}`);
       // Wait for metadata to load before returning
       await new Promise((resolve, reject) => {
@@ -1258,18 +1270,21 @@
     el.btnMicZh.addEventListener('click', () => toggleMic('zh-TW'));
     el.btnMicJa.addEventListener('click', () => toggleMic('ja'));
 
+    let _micAction = null;    // 'translate' | 'switch'
+    let _pendingMicLang = null;
+
     function toggleMic(lang) {
       if (activeRecognition && activeMicLang === lang) {
-        // User manually stops recording — stop mic then translate
-        stopMic();
-        const text = el.src.value.trim();
-        if (text) translateNow().catch(() => {});
+        // User manually stops — wait for onend to get final transcript, then translate
+        _micAction = 'translate';
+        try { activeRecognition.stop(); } catch {}
         return;
       }
       if (activeRecognition) {
-        // Switching language — stop current mic, wait briefly for onend, then start new
-        stopMic();
-        setTimeout(() => startMic(lang), 120);
+        // Switching language — wait for onend, then start new language
+        _micAction = 'switch';
+        _pendingMicLang = lang;
+        try { activeRecognition.stop(); } catch {}
         return;
       }
       startMic(lang);
@@ -1358,9 +1373,17 @@
       };
 
       recognition.onend = () => {
-        // Auto-translate after speech ends (translateNow auto-speaks when done)
-        if (activeRecognition === recognition) {
-          stopMic();
+        if (activeRecognition !== recognition) return;
+        const action = _micAction;
+        const nextLang = _pendingMicLang;
+        _micAction = null;
+        _pendingMicLang = null;
+        stopMic();
+
+        if (action === 'switch' && nextLang) {
+          startMic(nextLang);
+        } else {
+          // 'translate' or natural end — translate with final transcript
           const text = el.src.value.trim();
           if (text) translateNow().catch(() => {});
         }
