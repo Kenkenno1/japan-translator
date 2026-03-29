@@ -1043,6 +1043,8 @@
     async function speak(text, lang, target) {
       if (!text?.trim()) return;
       if (state.speaking) stopSpeaking();
+      // Force release iOS audio session to prevent ducking
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
 
       const gen = ++state.speakGeneration;
       const cfg = LANG[lang].tts;
@@ -1083,6 +1085,7 @@
         try {
           const audio = state.hdCache.audio;
           audio.currentTime = 0;
+          audio.volume = 1.0;
           state.audioEl = audio;
           audio.onended = onDone;
           audio.onerror = onDone;
@@ -1229,6 +1232,8 @@
       if (state.ttsTimeout) { clearTimeout(state.ttsTimeout); state.ttsTimeout = null; }
       if (state.ttsController) { state.ttsController.abort(); state.ttsController = null; }
       if (state.audioEl) {
+        state.audioEl.onended = null;
+        state.audioEl.onerror = null;
         state.audioEl.pause();
         state.audioEl.currentTime = 0;
         state.audioEl = null;
