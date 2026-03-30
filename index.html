@@ -1314,6 +1314,11 @@
         state.hdAbortController.abort();
         state.hdAbortController = null;
       }
+      if (state.hdCache?.audio) {
+        state.hdCache.audio.onended = null;
+        state.hdCache.audio.onerror = null;
+        state.hdCache.audio.pause();
+      }
       state.hdCache = null;
       state.hdPreloading = false;
     }
@@ -1385,8 +1390,18 @@
 
     function startMic(lang) {
       if (!SpeechRecognition) return;
+      const wasSpeaking = state.speaking;
       stopSpeaking();
 
+      // On mobile WebKit, give audio session time to release after TTS cancel
+      if (wasSpeaking && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        setTimeout(() => startMicCore(lang), 300);
+        return;
+      }
+      startMicCore(lang);
+    }
+
+    function startMicCore(lang) {
       // Set translation direction based on mic language
       const newDirection = lang === 'zh-TW' ? 'zh2ja' : 'ja2zh';
       if (state.direction !== newDirection) {
@@ -1516,6 +1531,7 @@
       if (activeRecognition) {
         const rec = activeRecognition;
         activeRecognition = null;
+        rec.onresult = rec.onerror = rec.onend = null;
         try { rec.stop(); } catch {}
       }
       el.btnMicZh.classList.remove('recording');
@@ -1882,7 +1898,8 @@ Return ONLY the improved translation. No explanations, no notes.`;
             void el.btnSpeakOut.offsetWidth; // force reflow for re-trigger
             el.btnSpeakOut.classList.add('speak-ready');
             const tgtLang = getTgtLang();
-            preloadHD(el.out.textContent, tgtLang);
+            // Mobile: skip auto preloadHD to reduce memory/CPU pressure
+            // HD will be loaded on-demand when user taps speak button
           } else {
             toggleSpeak('out');
           }
