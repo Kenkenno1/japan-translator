@@ -800,6 +800,7 @@
       UNDO_MS: 5000,
       TOAST_COOLDOWN_MS: 800,
       SRC_PERSIST_DEBOUNCE_MS: 1000,
+      STREAM_READ_TIMEOUT_MS: 30000,
     };
 
     const STORAGE_KEYS = {
@@ -975,8 +976,10 @@
     function autoDetectDirection(text) {
       const t = (text || '').trim();
       if (!t) return;
-      const hasKana = /[\u3040-\u30ff]/.test(t);
-      if (hasKana) {
+      // Detect Japanese: kana (ひらがな・カタカナ), katakana long vowel mark ー,
+      // or common Japanese-only symbols (々ヶヵ)
+      const hasJapanese = /[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9fー々ヶヵ]/.test(t);
+      if (hasJapanese) {
         if (state.direction !== 'ja2zh') {
           state.direction = 'ja2zh';
           lsSet(STORAGE_KEYS.DIRECTION, state.direction);
@@ -1064,6 +1067,9 @@
     // --- Settings ---
     el.btnSettings.addEventListener('click', () => openSettings(true));
     el.btnCloseSettings.addEventListener('click', () => openSettings(false));
+    el.settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === el.settingsOverlay) openSettings(false);
+    });
 
     function openSettings(show) {
       el.settingsOverlay.classList.toggle('show', !!show);
@@ -1866,7 +1872,10 @@ Return ONLY the improved translation. No explanations, no notes.`;
         let doneFlag = false;
         while (true) {
           if (controller.signal.aborted) break;
-          const { value, done } = await reader.read();
+          const { value, done } = await Promise.race([
+            reader.read(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Stream read timeout')), CONFIG.STREAM_READ_TIMEOUT_MS)),
+          ]);
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
 
