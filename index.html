@@ -623,6 +623,23 @@
     .btn-mic .mic-lang{font-size:18px;font-weight:600}
     .btn-mic .mic-hint{font-size:11px;opacity:0.5;font-weight:400}
 
+    /* Mic pending state — waiting for audio stream */
+    .btn-mic.mic-pending{
+      border-color:rgba(220,38,38,0.4);
+      background:linear-gradient(
+        135deg,
+        rgba(220,38,38,0.25) 0%,
+        rgba(239,68,68,0.30) 50%,
+        rgba(220,38,38,0.25) 100%
+      );
+      color:rgba(255,255,255,0.8);
+      animation:mic-pending-pulse 1s ease-in-out infinite;
+    }
+    @keyframes mic-pending-pulse{
+      0%,100%{opacity:0.7}
+      50%{opacity:1}
+    }
+
     /* Recording state — fully red button */
     .btn-mic.recording{
       border-color:rgba(220,38,38,0.8);
@@ -1491,20 +1508,33 @@
 
       // Bind all event handlers BEFORE calling start()
       // to avoid missing events fired synchronously by the browser
-      recognition.onaudiostart = () => {
-        micGotEvent = true;
-        if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
-        // Audio stream is actually flowing — NOW show recording UI
+      function showRecordingUI() {
         const btn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
+        if (btn.classList.contains('recording')) return; // already shown
         const otherBtn = lang === 'zh-TW' ? el.btnMicJa : el.btnMicZh;
+        btn.classList.remove('mic-pending');
         btn.classList.add('recording');
-        otherBtn.classList.remove('recording');
+        otherBtn.classList.remove('recording', 'mic-pending');
         btn.querySelector('.mic-icon').textContent = '⏹';
         btn.querySelector('.mic-lang').textContent = '停止';
         el.srcPanel.classList.add('recording-active');
         if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) {
           el.src.focus();
         }
+      }
+
+      // onstart: recognition service connected — fallback if onaudiostart doesn't fire
+      recognition.onstart = () => {
+        micGotEvent = true;
+        if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
+        showRecordingUI();
+      };
+
+      // onaudiostart: audio stream is actually flowing — preferred trigger
+      recognition.onaudiostart = () => {
+        micGotEvent = true;
+        if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
+        showRecordingUI();
       };
 
       recognition.onresult = (event) => {
@@ -1588,7 +1618,11 @@
         }
       }, 5000);
 
-      // Recording UI is now shown in onaudiostart, not here
+      // Show pending state immediately so user gets visual feedback
+      const pendingBtn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
+      pendingBtn.classList.add('mic-pending');
+      pendingBtn.querySelector('.mic-icon').textContent = '⏹';
+      pendingBtn.querySelector('.mic-lang').textContent = '等待中…';
 
     }
 
@@ -1602,8 +1636,8 @@
       }
       _micAction = null;
       _pendingMicLang = null;
-      el.btnMicZh.classList.remove('recording');
-      el.btnMicJa.classList.remove('recording');
+      el.btnMicZh.classList.remove('recording', 'mic-pending');
+      el.btnMicJa.classList.remove('recording', 'mic-pending');
       el.btnMicZh.querySelector('.mic-icon').textContent = '🎤';
       el.btnMicJa.querySelector('.mic-icon').textContent = '🎤';
       el.btnMicZh.querySelector('.mic-lang').textContent = '中文';
