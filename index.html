@@ -1174,21 +1174,18 @@
       if (state.hdCache && state.hdCache.text === text && state.hdCache.lang === lang && state.hdCache.dataUrl) {
         try {
           // Create fresh Audio each time to avoid iOS Safari replay issues
+          // Play immediately without awaiting loadedmetadata to preserve
+          // iOS Safari user gesture chain (await breaks gesture privilege)
           const audio = new Audio(state.hdCache.dataUrl);
-          await new Promise((resolve, reject) => {
-            audio.addEventListener('loadedmetadata', resolve, { once: true });
-            audio.addEventListener('error', reject, { once: true });
-            audio.load();
-          });
           state.audioEl = audio;
           audio.onended = onDone;
           audio.onerror = onDone;
           await audio.play();
-          // Use actual audio duration for timeout (more accurate than character estimate)
-          const hdTimeout = (isFinite(audio.duration) ? audio.duration * 1000 : dynamicTimeout) + 5000;
+          // Get duration after play starts; use character estimate as fallback
+          const dur = isFinite(audio.duration) ? audio.duration * 1000 : dynamicTimeout;
           state.ttsTimeout = setTimeout(() => {
             if (state.speaking && state.speakingTarget === target) stopSpeaking();
-          }, hdTimeout);
+          }, dur + 5000);
           return;
         } catch {
           state.audioEl = null;
