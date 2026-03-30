@@ -1593,6 +1593,8 @@
       autoDetectDirection(el.src.value);
 
       if (!state.auto) return;
+      // Abort any in-flight translation so stale results don't overwrite new input
+      if (state.controller) abortInFlight();
       if (state.debounce) clearTimeout(state.debounce);
       if (!el.src.value.trim()) {
         el.out.textContent = '';
@@ -1646,6 +1648,7 @@
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (el.settingsOverlay.classList.contains('show')) return;
         e.preventDefault();
         if (!state.busy) translateNow().catch(() => {});
       }
@@ -1881,7 +1884,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
               const json = JSON.parse(data);
               const delta = json?.choices?.[0]?.delta?.content || '';
               if (delta) { domBuf += delta; scheduleFlush(); }
-            } catch {}
+            } catch (parseErr) { console.warn('SSE parse error:', data, parseErr); }
           }
           if (doneFlag) break;
         }
@@ -1899,7 +1902,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
               const json = JSON.parse(data);
               const delta = json?.choices?.[0]?.delta?.content || '';
               if (delta) domBuf += delta;
-            } catch {}
+            } catch (parseErr) { console.warn('SSE parse error:', data, parseErr); }
           }
         }
 
