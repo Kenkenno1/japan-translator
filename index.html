@@ -2,7 +2,7 @@
 <html lang="zh-Hant" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="旅日翻譯" />
@@ -536,7 +536,7 @@
       color:var(--text);
       padding:12px;
       outline:none;
-      font-size:14px;
+      font-size:16px;
       font-family:inherit;
     }
     .in:focus, .modal select:focus{border-color:var(--focus)}
@@ -1171,11 +1171,15 @@
       state.ttsController = ttsAc;
 
       // Check if HD audio is cached for this exact text
-      if (state.hdCache && state.hdCache.text === text && state.hdCache.lang === lang && state.hdCache.audio) {
+      if (state.hdCache && state.hdCache.text === text && state.hdCache.lang === lang && state.hdCache.dataUrl) {
         try {
-          const audio = state.hdCache.audio;
-          audio.currentTime = 0;
-          audio.volume = 1.0;
+          // Create fresh Audio each time to avoid iOS Safari replay issues
+          const audio = new Audio(state.hdCache.dataUrl);
+          await new Promise((resolve, reject) => {
+            audio.addEventListener('loadedmetadata', resolve, { once: true });
+            audio.addEventListener('error', reject, { once: true });
+            audio.load();
+          });
           state.audioEl = audio;
           audio.onended = onDone;
           audio.onerror = onDone;
@@ -1282,6 +1286,36 @@
       return u;
     }
 
+    async function speakCloudDataUrl(text, signal) {
+      const res = await fetch(CONFIG.TTS_BASE, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'tts-1',
+          input: text,
+          voice: CONFIG.TTS_VOICE,
+          response_format: 'mp3',
+        }),
+        signal,
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        let msg = `TTS ${res.status}`;
+        try { msg = JSON.parse(body)?.error?.message || msg; } catch {}
+        throw new Error(msg);
+      }
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      const chunks = [];
+      for (let i = 0; i < bytes.length; i += 8192) {
+        chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)));
+      }
+      return `data:audio/mp3;base64,${btoa(chunks.join(''))}`;
+    }
+
     // Preload OpenAI HD audio in background for second play
     function preloadHD(text, lang) {
       if (!state.apiKey) return;
@@ -1298,9 +1332,9 @@
       const ac = new AbortController();
       state.hdAbortController = ac;
 
-      speakCloud(text, ac.signal)
-        .then(audio => {
-          state.hdCache = { text, lang, audio };
+      speakCloudDataUrl(text, ac.signal)
+        .then(dataUrl => {
+          state.hdCache = { text, lang, dataUrl };
         })
         .catch(() => {})
         .finally(() => {
@@ -1313,11 +1347,6 @@
       if (state.hdAbortController) {
         state.hdAbortController.abort();
         state.hdAbortController = null;
-      }
-      if (state.hdCache?.audio) {
-        state.hdCache.audio.onended = null;
-        state.hdCache.audio.onerror = null;
-        state.hdCache.audio.pause();
       }
       state.hdCache = null;
       state.hdPreloading = false;
