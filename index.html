@@ -830,13 +830,21 @@
       },
     };
 
+    // --- Safe localStorage helpers ---
+    function lsGet(key, fallback) {
+      try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+    }
+    function lsSet(key, value) {
+      try { localStorage.setItem(key, value); } catch {}
+    }
+
     // --- State ---
     const state = {
-      apiKey: (localStorage.getItem(STORAGE_KEYS.API_KEY) || '').trim(),
-      auto: (localStorage.getItem(STORAGE_KEYS.AUTO) ?? '1') === '1',
-      theme: localStorage.getItem(STORAGE_KEYS.THEME) || 'dark',
+      apiKey: (lsGet(STORAGE_KEYS.API_KEY, '') || '').trim(),
+      auto: (lsGet(STORAGE_KEYS.AUTO, '1')) === '1',
+      theme: lsGet(STORAGE_KEYS.THEME, 'dark'),
       // direction: 'zh2ja' or 'ja2zh'
-      direction: localStorage.getItem(STORAGE_KEYS.DIRECTION) || 'zh2ja',
+      direction: lsGet(STORAGE_KEYS.DIRECTION, 'zh2ja'),
       busy: false,
       controller: null,
       debounce: null,
@@ -902,7 +910,7 @@
     el.auto.checked = state.auto;
 
     // Restore source text
-    const savedSrc = localStorage.getItem(STORAGE_KEYS.SRC_TEXT) || '';
+    const savedSrc = lsGet(STORAGE_KEYS.SRC_TEXT, '');
     if (savedSrc) el.src.value = savedSrc;
 
     // --- Toast system ---
@@ -971,13 +979,13 @@
       if (hasKana) {
         if (state.direction !== 'ja2zh') {
           state.direction = 'ja2zh';
-          localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
+          lsSet(STORAGE_KEYS.DIRECTION, state.direction);
           updateDirectionUI();
         }
       } else if (/[，。！？、；：「」『』（）\u3100-\u312f]/.test(t)) {
         if (state.direction !== 'zh2ja') {
           state.direction = 'zh2ja';
-          localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
+          lsSet(STORAGE_KEYS.DIRECTION, state.direction);
           updateDirectionUI();
         }
       }
@@ -987,7 +995,7 @@
     function applyTheme(theme) {
       state.theme = theme;
       document.documentElement.setAttribute('data-theme', theme);
-      localStorage.setItem(STORAGE_KEYS.THEME, theme);
+      lsSet(STORAGE_KEYS.THEME, theme);
       el.btnTheme.textContent = theme === 'dark' ? '◑' : '◐';
     }
 
@@ -1009,7 +1017,7 @@
     function persistSrcText() {
       if (state.srcPersistTimer) clearTimeout(state.srcPersistTimer);
       state.srcPersistTimer = setTimeout(() => {
-        localStorage.setItem(STORAGE_KEYS.SRC_TEXT, el.src.value);
+        lsSet(STORAGE_KEYS.SRC_TEXT, el.src.value);
       }, CONFIG.SRC_PERSIST_DEBOUNCE_MS);
     }
 
@@ -1066,7 +1074,7 @@
         el.verifyResult.className = 'verify-result';
         el.settingsPrompt.style.display = state.apiKey ? 'none' : '';
       } else {
-        localStorage.setItem(STORAGE_KEYS.API_KEY, state.apiKey);
+        lsSet(STORAGE_KEYS.API_KEY, state.apiKey);
       }
     }
 
@@ -1077,7 +1085,7 @@
       el.verifyResult.className = 'verify-result';
     });
     el.apiKey.addEventListener('blur', () => {
-      localStorage.setItem(STORAGE_KEYS.API_KEY, state.apiKey);
+      lsSet(STORAGE_KEYS.API_KEY, state.apiKey);
     });
 
     // --- Verify API Key ---
@@ -1094,7 +1102,7 @@
         if (res.ok) {
           el.verifyResult.textContent = '✓ 連線成功';
           el.verifyResult.className = 'verify-result success';
-          localStorage.setItem(STORAGE_KEYS.API_KEY, state.apiKey);
+          lsSet(STORAGE_KEYS.API_KEY, state.apiKey);
           setTimeout(() => openSettings(false), 800);
         } else {
           const body = await res.text().catch(() => '');
@@ -1113,7 +1121,7 @@
 
     el.auto.addEventListener('change', (e) => {
       state.auto = !!e.target.checked;
-      localStorage.setItem(STORAGE_KEYS.AUTO, state.auto ? '1' : '0');
+      lsSet(STORAGE_KEYS.AUTO, state.auto ? '1' : '0');
     });
 
     // --- TTS ---
@@ -1396,8 +1404,12 @@
 
     let _micAction = null;    // 'translate' | 'switch'
     let _pendingMicLang = null;
+    let _micDelayTimer = null; // timer for 300ms mobile audio release delay
 
     function toggleMic(lang) {
+      // Cancel any pending delayed mic start
+      if (_micDelayTimer) { clearTimeout(_micDelayTimer); _micDelayTimer = null; }
+
       if (activeRecognition && activeMicLang === lang) {
         // User manually stops — wait for onend to get final transcript, then translate
         _micAction = 'translate';
@@ -1421,7 +1433,7 @@
 
       // On mobile WebKit, give audio session time to release after TTS cancel
       if (wasSpeaking && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        setTimeout(() => startMicCore(lang), 300);
+        _micDelayTimer = setTimeout(() => { _micDelayTimer = null; startMicCore(lang); }, 300);
         return;
       }
       startMicCore(lang);
@@ -1432,7 +1444,7 @@
       const newDirection = lang === 'zh-TW' ? 'zh2ja' : 'ja2zh';
       if (state.direction !== newDirection) {
         state.direction = newDirection;
-        localStorage.setItem(STORAGE_KEYS.DIRECTION, state.direction);
+        lsSet(STORAGE_KEYS.DIRECTION, state.direction);
         updateDirectionUI();
       }
 
@@ -1554,12 +1566,15 @@
     }
 
     function stopMic() {
+      if (_micDelayTimer) { clearTimeout(_micDelayTimer); _micDelayTimer = null; }
       if (activeRecognition) {
         const rec = activeRecognition;
         activeRecognition = null;
         rec.onresult = rec.onerror = rec.onend = null;
         try { rec.stop(); } catch {}
       }
+      _micAction = null;
+      _pendingMicLang = null;
       el.btnMicZh.classList.remove('recording');
       el.btnMicJa.classList.remove('recording');
       el.btnMicZh.querySelector('.mic-icon').textContent = '🎤';
@@ -1935,8 +1950,8 @@ Return ONLY the improved translation. No explanations, no notes.`;
         if (isAbortError(e)) return;
         toastError(String(e?.message || e));
       } finally {
-        el.out.contentEditable = 'true';
         if (state.controller === controller) {
+          el.out.contentEditable = 'true';
           el.outStatus.textContent = '';
           setBusy(false);
           state.controller = null;
@@ -1946,7 +1961,7 @@ Return ONLY the improved translation. No explanations, no notes.`;
 
     // --- Cleanup ---
     window.addEventListener('beforeunload', () => {
-      localStorage.setItem(STORAGE_KEYS.SRC_TEXT, el.src.value);
+      lsSet(STORAGE_KEYS.SRC_TEXT, el.src.value);
       stopMic();
       clearHDCache();
       if (state.controller) try { state.controller.abort(); } catch {}
