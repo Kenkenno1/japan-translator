@@ -1404,35 +1404,10 @@
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      // Try to start recognition BEFORE clearing input
-      try {
-        recognition.start();
-        console.log('SpeechRecognition started for', lang);
-      } catch (e) {
-        console.error('SpeechRecognition start failed:', e);
-        toastError('無法啟動語音辨識：' + (e.message || e));
-        return; // Don't clear input if start failed
-      }
-
-      // Start succeeded — mark active but don't clear input yet
-      // (permission may still be denied asynchronously via onerror)
-      activeRecognition = recognition;
-      activeMicLang = lang;
-
-      const btn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
-      const otherBtn = lang === 'zh-TW' ? el.btnMicJa : el.btnMicZh;
-      btn.classList.add('recording');
-      otherBtn.classList.remove('recording');
-      btn.querySelector('.mic-icon').textContent = '⏹';
-      btn.querySelector('.mic-lang').textContent = '停止';
-      el.srcPanel.classList.add('recording-active');
-      // Don't focus textarea on iOS — keyboard popup can block mic permission
-      if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-        el.src.focus();
-      }
-
       let finalTranscript = '';
       let micCleared = false;
+      let micGotEvent = false;
+      let micSafetyTimer = null;
 
       function clearOnFirstResult() {
         if (micCleared) return;
@@ -1446,7 +1421,11 @@
         persistSrcText();
       }
 
+      // Bind all event handlers BEFORE calling start()
+      // to avoid missing events fired synchronously by the browser
       recognition.onresult = (event) => {
+        micGotEvent = true;
+        if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
         clearOnFirstResult();
         let interim = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -1463,11 +1442,15 @@
       };
 
       recognition.onerror = (event) => {
+        micGotEvent = true;
+        if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
         console.error('SpeechRecognition error:', event.error, event.message);
         if (event.error === 'no-speech') {
           toast('沒有偵測到語音，請再試一次');
         } else if (event.error === 'not-allowed') {
           toastError('請允許麥克風權限：請到 設定 → Safari → 麥克風 開啟');
+        } else if (event.error === 'audio-capture') {
+          toastError('無法存取麥克風，請確認沒有其他 APP 佔用');
         } else if (event.error !== 'aborted') {
           toastError('語音辨識錯誤：' + event.error);
         }
@@ -1475,6 +1458,7 @@
       };
 
       recognition.onend = () => {
+        if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
         if (activeRecognition !== recognition) return;
         const action = _micAction;
         const nextLang = _pendingMicLang;
@@ -1490,6 +1474,41 @@
           if (text) translateNow().catch(() => {});
         }
       };
+
+      // Now start — all handlers are already bound
+      try {
+        recognition.start();
+        console.log('SpeechRecognition started for', lang);
+      } catch (e) {
+        console.error('SpeechRecognition start failed:', e);
+        toastError('無法啟動語音辨識：' + (e.message || e));
+        return;
+      }
+
+      // Safety timeout: if no event fires within 5s, mic likely failed silently
+      micSafetyTimer = setTimeout(() => {
+        if (!micGotEvent && activeRecognition === recognition) {
+          console.warn('Mic safety timeout — no events received');
+          toast('語音辨識無回應，請再試一次');
+          stopMic();
+        }
+      }, 5000);
+
+      // Start succeeded — mark active
+      activeRecognition = recognition;
+      activeMicLang = lang;
+
+      const btn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
+      const otherBtn = lang === 'zh-TW' ? el.btnMicJa : el.btnMicZh;
+      btn.classList.add('recording');
+      otherBtn.classList.remove('recording');
+      btn.querySelector('.mic-icon').textContent = '⏹';
+      btn.querySelector('.mic-lang').textContent = '停止';
+      el.srcPanel.classList.add('recording-active');
+      // Don't focus textarea on iOS — keyboard popup can block mic permission
+      if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        el.src.focus();
+      }
 
     }
 
