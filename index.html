@@ -861,6 +861,9 @@
       hdCache: null,
       hdPreloading: false,
       hdAbortController: null,
+      // Cooldown timestamps for mic/TTS audio session release
+      lastTtsEndedAt: 0,
+      lastMicEndedAt: 0,
     };
 
     // --- Utilities ---
@@ -1384,6 +1387,7 @@
       }
       state.speaking = false;
       state.speakingTarget = null;
+      state.lastTtsEndedAt = Date.now();
     }
 
     // --- Speech Recognition (Mic buttons) ---
@@ -1432,14 +1436,19 @@
       startMic(lang);
     }
 
+    const MIC_COOLDOWN_MS = 800;
+
     function startMic(lang) {
       if (!SpeechRecognition) return;
-      const wasSpeaking = state.speaking;
       stopSpeaking();
 
-      // On mobile WebKit, give audio session time to release after TTS cancel
-      if (wasSpeaking && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        _micDelayTimer = setTimeout(() => { _micDelayTimer = null; startMicCore(lang); }, 300);
+      // Cooldown: wait if TTS or previous mic ended recently (audio session release)
+      const now = Date.now();
+      const sinceTts = now - state.lastTtsEndedAt;
+      const sinceMic = now - state.lastMicEndedAt;
+      const cooldownRemaining = MIC_COOLDOWN_MS - Math.min(sinceTts, sinceMic);
+      if (cooldownRemaining > 0) {
+        _micDelayTimer = setTimeout(() => { _micDelayTimer = null; startMicCore(lang); }, cooldownRemaining);
         return;
       }
       startMicCore(lang);
@@ -1482,6 +1491,22 @@
 
       // Bind all event handlers BEFORE calling start()
       // to avoid missing events fired synchronously by the browser
+      recognition.onaudiostart = () => {
+        micGotEvent = true;
+        if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
+        // Audio stream is actually flowing — NOW show recording UI
+        const btn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
+        const otherBtn = lang === 'zh-TW' ? el.btnMicJa : el.btnMicZh;
+        btn.classList.add('recording');
+        otherBtn.classList.remove('recording');
+        btn.querySelector('.mic-icon').textContent = '⏹';
+        btn.querySelector('.mic-lang').textContent = '停止';
+        el.srcPanel.classList.add('recording-active');
+        if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+          el.src.focus();
+        }
+      };
+
       recognition.onresult = (event) => {
         micGotEvent = true;
         if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
@@ -1504,13 +1529,15 @@
         micGotEvent = true;
         if (micSafetyTimer) { clearTimeout(micSafetyTimer); micSafetyTimer = null; }
         console.error('SpeechRecognition error:', event.error, event.message);
+        // 'aborted' is expected when switching languages — let onend handle the switch
+        if (event.error === 'aborted') return;
         if (event.error === 'no-speech') {
           toast('沒有偵測到語音，請再試一次');
         } else if (event.error === 'not-allowed') {
           toastError('請允許麥克風權限：請到 設定 → Safari → 麥克風 開啟');
         } else if (event.error === 'audio-capture') {
           toastError('無法存取麥克風，請確認沒有其他 APP 佔用');
-        } else if (event.error !== 'aborted') {
+        } else {
           toastError('語音辨識錯誤：' + event.error);
         }
         stopMic();
@@ -1526,7 +1553,8 @@
         stopMic();
 
         if (action === 'switch' && nextLang) {
-          startMic(nextLang);
+          // Delay restart to let browser fully release the previous recognition session
+          _micDelayTimer = setTimeout(() => { _micDelayTimer = null; startMic(nextLang); }, 500);
         } else {
           // 'translate' or natural end — translate with final transcript
           const text = el.src.value.trim();
@@ -1534,11 +1562,18 @@
         }
       };
 
+      // Mark active BEFORE start() so handlers can reference it immediately
+      activeRecognition = recognition;
+      activeMicLang = lang;
+
       // Now start — all handlers are already bound
       try {
         recognition.start();
         console.log('SpeechRecognition started for', lang);
       } catch (e) {
+        // Rollback on failure
+        activeRecognition = null;
+        activeMicLang = null;
         console.error('SpeechRecognition start failed:', e);
         toastError('無法啟動語音辨識：' + (e.message || e));
         return;
@@ -1553,21 +1588,7 @@
         }
       }, 5000);
 
-      // Start succeeded — mark active
-      activeRecognition = recognition;
-      activeMicLang = lang;
-
-      const btn = lang === 'zh-TW' ? el.btnMicZh : el.btnMicJa;
-      const otherBtn = lang === 'zh-TW' ? el.btnMicJa : el.btnMicZh;
-      btn.classList.add('recording');
-      otherBtn.classList.remove('recording');
-      btn.querySelector('.mic-icon').textContent = '⏹';
-      btn.querySelector('.mic-lang').textContent = '停止';
-      el.srcPanel.classList.add('recording-active');
-      // Don't focus textarea on iOS — keyboard popup can block mic permission
-      if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-        el.src.focus();
-      }
+      // Recording UI is now shown in onaudiostart, not here
 
     }
 
@@ -1589,6 +1610,7 @@
       el.btnMicJa.querySelector('.mic-lang').textContent = '日本語';
       el.srcPanel.classList.remove('recording-active');
       activeMicLang = null;
+      state.lastMicEndedAt = Date.now();
     }
 
     // --- Input events ---
